@@ -1,0 +1,66 @@
+---
+description: TCA feature structure — Reducer (State/Action/body) + SwiftUI View per screen
+globs: "mobile/ios/Features/**/*.swift"
+alwaysApply: false
+---
+
+# Feature structure (The Composable Architecture)
+
+Every screen in `Features` is a **TCA feature** — a reducer + a SwiftUI view. Two
+files in the feature's folder:
+
+```
+Features/Sources/Features/Home/
+  HomeFeature.swift   # @Reducer: State + Action + body
+  HomeView.swift      # SwiftUI view driven by StoreOf<HomeFeature> + #Preview
+```
+
+The `Home*` pair is the reference implementation.
+
+## Reducer (`{Feature}Feature.swift`)
+
+```kotlin
+@Reducer
+public struct HomeFeature {
+    @ObservableState
+    public struct State: Equatable { public var isLoading = true; public init() {} }
+
+    public enum Action {
+        case task
+        case greetingResponse(Greeting)
+        case delegate(Delegate)
+        @CasePathable public enum Delegate: Equatable { case openDetails(id: String) }
+    }
+
+    @Dependency(\.platformInfo) private var platformInfo
+
+    public var body: some ReducerOf<Self> {
+        Reduce { state, action in /* single switch */ }
+    }
+}
+```
+
+- `State` is `@ObservableState` and `Equatable`; holds **durable UI state only** — no one-shot flags.
+- `Action` is a flat enum. Side effects return `.run { }`; navigation/parent signals go through a
+  nested `@CasePathable enum Delegate` case, never a boolean in State.
+- Dependencies come via `@Dependency(\.…)` (a `:Domain` client) — never import `Data` or call a device API.
+- `public` the types + members that the app/tests use (it is a library package).
+
+## View (`{Feature}View.swift`)
+
+- `@Bindable var store: StoreOf<{Feature}>`, a `public init(store:)`, no business logic.
+- Read `store.<state>`; send `store.send(.action)`. Kick off loads with `.task { store.send(.task) }`.
+- `#Preview` in the same file (see `swiftui-previews`). Use `:Styleguide` components/tokens.
+
+## Composition & navigation
+
+Screens are composed in `AppFeature` (root reducer) with a type-safe navigation stack — see the
+`navigation` rule. A child signals the parent via `delegate`; the parent `Scope`s children and drives
+`StackState`.
+
+## Anti-patterns
+
+- ❌ Navigation/alert state as `Bool`/optional flags in `State` instead of an `Action`/`@Presents`
+- ❌ A view holding business logic or resolving a dependency directly
+- ❌ Importing `Data` or UIKit from `Features`
+- ❌ A reducer without a single exhaustive `switch` in `Reduce`

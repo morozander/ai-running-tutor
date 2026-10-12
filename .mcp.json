@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-mcp.json",
+  "mcpServers": {
+    "internal-jira": {
+      "command": "node",
+      "args": ["${INTERNAL_JIRA_MCP_PATH}/dist/server.js"],
+      "env": {
+        "JIRA_TYPE": "${JIRA_TYPE:-server}",
+        "JIRA_BASE_URL": "${JIRA_BASE_URL}",
+        "JIRA_PAT": "${JIRA_PAT}",
+        "JIRA_EMAIL": "${JIRA_EMAIL:-}",
+        "JIRA_API_TOKEN": "${JIRA_API_TOKEN:-}"
+      },
+      "_comment": "Path to the built internal-jira-mcp server. Set INTERNAL_JIRA_MCP_PATH in your shell env (see scripts/setup-claude.sh)."
+    },
+    "figma-desktop": {
+      "type": "http",
+      "url": "http://127.0.0.1:3845/mcp",
+      "_comment": "Figma LOCAL Dev Mode MCP (desktop app) — FALLBACK, user-assisted. No remote quota, but reads ONLY the CURRENT SELECTION (cannot navigate/search). Used when the remote is unreachable/exhausted or for a high-fidelity single-frame render; the agent prompts the dev to select the frame. Requires the desktop app running with Dev Mode + 'Enable desktop MCP server'. See .agentic/rules/_shared/figma-usage.md"
+    },
+    "figma": {
+      "type": "http",
+      "url": "https://mcp.figma.com/mcp",
+      "_comment": "Figma Remote MCP — PRIMARY (navigable). URL/node-id navigation across pages + search_design_system + get_metadata/get_screenshot/get_variable_defs. Workable quota on a paid Dev/Full seat (Pro+ ~200/day); apply cache + fetch-once + backoff. OAuth on first use. See https://help.figma.com/hc/en-us/articles/32132100833559"
+    },
+    "aws-mcp": {
+      "command": "uvx",
+      "args": [
+        "mcp-proxy-for-aws==1.6.2",
+        "https://aws-mcp.eu-central-1.api.aws/mcp",
+        "--metadata", "AWS_REGION=eu-central-1"
+      ],
+      "env": {
+        "AWS_MCP_PROXY_PROFILES": "conflead-readonly"
+      },
+      "_comment": "AWS Agent Toolkit — managed remote MCP (Frankfurt, eu-central-1). READ-ONLY governed AWS surface + current AWS docs/skills; SigV4-signed from ~/.aws via the local uvx proxy. Profile conflead-readonly assumes acct 527165097939 role/ai-readonly (ReadOnlyAccess); agent can't reach the admin source profile. Does NOT run terragrunt — IaC stays validate/plan in build-check. Needs `aws sso login --sso-session G-ConfLeadApp` first. See .agentic/rules/iaac/aws-credentials.md"
+    }
+  }
+}

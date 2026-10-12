@@ -1,0 +1,162 @@
+---
+description: RN component patterns — themed primitives, FlatList performance, accessibility
+globs: "mobile/expo-boilerplate/src/**/*.tsx"
+alwaysApply: false
+---
+
+# Mobile Components
+
+**All components are functional.** No class components.
+
+## Themed primitives
+
+Don't use raw `<Text>` and `<View>` for content — use the themed wrappers so light/dark works automatically:
+
+```tsx
+// src/components/themed-text.tsx
+import { StyleSheet, Text, type TextProps } from 'react-native';
+import { useThemeColor } from '@/hooks/use-theme-color';
+
+type ThemedTextProps = TextProps & {
+  lightColor?: string;
+  darkColor?: string;
+  type?: 'default' | 'title' | 'defaultSemiBold' | 'subtitle' | 'link';
+};
+
+export function ThemedText({ style, lightColor, darkColor, type = 'default', ...rest }: ThemedTextProps) {
+  // Links take the theme's tint token; everything else takes the text token.
+  const color = useThemeColor({ light: lightColor, dark: darkColor }, type === 'link' ? 'tint' : 'text');
+  return <Text style={[{ color }, styles[type], style]} {...rest} />;
+}
+
+const styles = StyleSheet.create({
+  default:          { fontSize: 16, lineHeight: 24 },
+  defaultSemiBold:  { fontSize: 16, lineHeight: 24, fontWeight: '600' },
+  title:            { fontSize: 32, fontWeight: 'bold', lineHeight: 32 },
+  subtitle:         { fontSize: 20, fontWeight: 'bold' },
+  link:             { fontSize: 16, lineHeight: 30 },
+});
+```
+
+(The Expo stub hardcodes `#0a7ea4` in the `link` style — that's just the `tint` token's light value. Reference the token instead so links follow dark mode and rebrands.)
+
+`<ThemedView>` follows the same pattern.
+
+**Enforce the text rule mechanically**: WHEN a themed text wrapper exists (`ThemedText`, THIS repo) → enable `react-native/no-raw-text` with `skip: ['ThemedText']` (`eslint-plugin-react-native`) so a raw string outside the wrapper is a lint error, not a review catch. This locks in token discipline AND i18n-readiness — a raw string is also an untranslatable string. The company's most disciplined app runs exactly this config; its near-zero escape-hatch count shows it holds.
+
+## Touchables
+
+Choose based on visual feedback:
+
+| Primitive | Use |
+|---|---|
+| `Pressable` | **Default.** Custom feedback via `pressed` state. |
+| `TouchableOpacity` | Quick opacity-based feedback (legacy) |
+| `TouchableHighlight` | Backdrop color change (rare) |
+| `TouchableWithoutFeedback` | When you genuinely don't want feedback (consider why) |
+
+```tsx
+<Pressable
+  onPress={onPress}
+  accessibilityRole="button"
+  accessibilityLabel="Save profile"
+  style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+>
+  <ThemedText>Save</ThemedText>
+</Pressable>
+```
+
+## Lists — always FlatList / SectionList / FlashList
+
+**Never `.map()` a long list of items inside a `<ScrollView>`.** It renders all items at once and tanks performance.
+
+```tsx
+// ✅
+<FlatList
+  data={items}
+  keyExtractor={item => item.id}
+  renderItem={({ item }) => <ItemRow item={item} />}
+  onEndReached={loadMore}
+  onEndReachedThreshold={0.5}
+  ItemSeparatorComponent={Separator}
+  ListEmptyComponent={EmptyState}
+/>
+
+// ❌
+<ScrollView>
+  {items.map(item => <ItemRow key={item.id} item={item} />)}
+</ScrollView>
+```
+
+For very large lists, use `@shopify/flash-list` v2's `FlashList` (drop-in replacement, better recycling; v2 needs no size estimates — `estimatedItemSize` is gone, and it never existed on `FlatList`).
+
+## Image handling
+
+Use `expo-image`, not React Native's built-in `<Image>`:
+
+```tsx
+import { Image } from 'expo-image';
+
+<Image
+  source={{ uri: avatarUrl }}
+  style={styles.avatar}
+  contentFit="cover"
+  transition={200}
+  cachePolicy="memory-disk"
+  accessibilityLabel="User avatar"
+/>
+```
+
+`expo-image` is faster, supports better caching, and gives you `blurhash` placeholders.
+
+## Accessibility
+
+Every interactive element gets:
+
+- `accessibilityRole` (`button`, `link`, `header`, `image`, `text`, `alert`, ...)
+- `accessibilityLabel` if the visible text isn't sufficient
+- `accessibilityHint` for non-obvious actions
+- `accessibilityState={{ disabled, selected, checked }}` for stateful controls
+
+Decorative content gets `accessibilityElementsHidden={true}` (iOS) + `importantForAccessibility="no-hide-descendants"` (Android), or wrap in a parent that already has `accessible`.
+
+```tsx
+<Pressable
+  accessibilityRole="button"
+  accessibilityLabel="Delete account"
+  accessibilityHint="Permanently deletes your account"
+  accessibilityState={{ disabled: isSubmitting }}
+  onPress={handleDelete}
+>
+```
+
+## Loading states
+
+```tsx
+import { ActivityIndicator } from 'react-native';
+
+<ActivityIndicator size="small" color={tintColor} accessibilityLabel="Loading" />
+```
+
+Inside buttons:
+
+```tsx
+<Pressable onPress={onPress} disabled={isLoading}>
+  {isLoading ? <ActivityIndicator color="#fff" /> : <ThemedText>Save</ThemedText>}
+</Pressable>
+```
+
+## List/data states — empty ≠ errored
+
+A `FlatList` whose data came from a failed fetch must NOT show its `ListEmptyComponent` as if the fetch succeeded with no rows (the user reads an outage as "my data is gone"). Branch the four outcomes explicitly — `loading` → spinner; `error` → an error view with retry; empty → `ListEmptyComponent` only when the fetch SUCCEEDED; otherwise the list. Defaulting `data` to `[]` on error and relying on `ListEmptyComponent` is the violation signal.
+
+## Hard rules
+
+- ❌ Class components
+- ❌ `<Text>` / `<View>` for content — use themed wrappers
+- ❌ Rendering the empty state on a failed fetch — "couldn't load" must look different from "nothing here"
+- ❌ `.map()` over long lists in `<ScrollView>` — use `FlatList`
+- ❌ Built-in `<Image>` — use `expo-image`
+- ❌ Missing `accessibilityRole` / `accessibilityLabel` on interactive elements
+- ❌ More than one component per file
+- ❌ Component files > 500 lines

@@ -1,0 +1,26 @@
+---
+description: Outbound HTTP resilience — timeouts, retry classification, retry budget, log truncation
+globs: "backend/src/**/*.service.ts,backend/src/queue-workers/**/*.ts"
+alwaysApply: false
+---
+
+# Outbound HTTP Calls
+
+The resilience contract for ANY call to an external HTTP service (Bedrock, SendGrid, third-party APIs). Default to one shared client wrapper that encodes these rules — per-call ad-hoc `fetch`/axios with no timeout is the bug signal.
+
+## The contract
+
+- **Timeout on every call.** No outbound request without a per-request timeout — an un-timed call inherits the Lambda timeout as its failure mode.
+- **Classify retryability; don't blanket-retry:**
+  - Network errors and 5xx → retryable.
+  - 4xx → NOT retryable — same request gets the same answer.
+  - **Upstream 504 → NOT retryable**, surface it as a gateway-timeout error verbatim: the next attempt would likely time out too and only burns the caller's own read-timeout budget.
+- **Total retry budget** across all attempts (exponential backoff within it) — per-attempt retry counts without a wall-clock cap multiply tail latency.
+- **Truncate logged upstream error bodies** (~2KB) — a misbehaving upstream returning an HTML error page must not flood the logs.
+- **Stop retrying for an abandoned caller.** WHEN the originating request can be cancelled (client disconnect) → thread an `AbortSignal` through so in-flight retries stop instead of finishing work nobody will read.
+
+## WHEN to deviate
+
+A deliberate per-integration override (e.g. a longer timeout for a known-slow batch endpoint) is fine — set it AT the call with a comment naming why. Deviations live at call sites, not in the shared defaults.
+
+Idempotency of the operations these calls belong to: [feature-modules.md](./feature-modules.md). External calls never sit inside a DB transaction: [mikroorm.md](./mikroorm.md) §Transactions.

@@ -1,0 +1,89 @@
+---
+description: Platform-specific file suffixes — .ios, .android, .web, .native
+globs: "mobile/expo-boilerplate/**/*.ts,mobile/expo-boilerplate/**/*.tsx"
+alwaysApply: false
+---
+
+# Platform-Specific Files
+
+Metro automatically picks the right file based on platform extension. Order of resolution:
+
+| Build target | Resolution order |
+|---|---|
+| iOS | `.ios.tsx` → `.native.tsx` → `.tsx` |
+| Android | `.android.tsx` → `.native.tsx` → `.tsx` |
+| Web (Expo web) | `.web.tsx` → `.tsx` |
+
+## When to use
+
+**Default to `Platform.select` for small differences** (1-2 lines). Use platform files only when:
+
+- The implementation differs by >10 lines
+- The imports differ (web has no `react-native-reanimated`, iOS may use `SF Symbols`)
+- Web exists and behaves differently from native
+
+## Example: `useColorScheme`
+
+The boilerplate already uses this pattern for `useColorScheme`:
+
+```ts
+// src/hooks/use-color-scheme.ts — native (iOS + Android)
+export { useColorScheme } from 'react-native';
+```
+
+```ts
+// src/hooks/use-color-scheme.web.ts — web override
+import { useEffect, useState } from 'react';
+
+export function useColorScheme() {
+  const [scheme, setScheme] = useState<'light' | 'dark' | null>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    setScheme(media.matches ? 'dark' : 'light');
+    const handler = (e: MediaQueryListEvent) => setScheme(e.matches ? 'dark' : 'light');
+    media.addEventListener('change', handler);
+    return () => media.removeEventListener('change', handler);
+  }, []);
+
+  return scheme;
+}
+```
+
+Imports from `@/hooks/use-color-scheme` automatically pick the right variant.
+
+## Example: `.native.tsx` for shared native fallback
+
+```
+src/components/
+├── animated-card.web.tsx       # uses framer-motion
+├── animated-card.native.tsx    # uses react-native-reanimated
+└── animated-card.tsx           # not used — resolution falls through
+```
+
+If you only have `.web.tsx` and `.native.tsx`, the base `.tsx` doesn't need to exist — but it's good practice to include a stub that throws or warns so you don't accidentally import the wrong layer.
+
+## Avoid drift
+
+Platform files share the **same TypeScript types and prop API** — only the implementation differs. Use a shared `*.types.ts` file when the prop shape is non-trivial:
+
+```ts
+// src/components/animated-card/types.ts
+export type AnimatedCardProps = { ... };
+
+// animated-card.web.tsx
+import type { AnimatedCardProps } from './types';
+export function AnimatedCard(props: AnimatedCardProps) { ... }
+
+// animated-card.native.tsx
+import type { AnimatedCardProps } from './types';
+export function AnimatedCard(props: AnimatedCardProps) { ... }
+```
+
+## Anti-patterns
+
+- ❌ Forking entire feature directories — share what you can
+- ❌ Different exported names between platforms
+- ❌ Using `.ios.tsx` and `.android.tsx` to dodge writing portable code — fix the abstraction
+- ❌ Importing platform-specific files explicitly (`./animated-card.web`) — let Metro resolve it
+- ❌ Drift between platform variants (one updated, one not) — keep them in lockstep

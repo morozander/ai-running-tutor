@@ -1,0 +1,21 @@
+{
+  "Clients": {
+    "2herzcktkafklwmwwcya48sus": {
+      "ClientId": "2herzcktkafklwmwwcya48sus",
+      "ClientName": "conflead-web",
+      "CreationDate": "2026-05-30T07:03:01.082Z",
+      "ExplicitAuthFlows": [
+        "ALLOW_USER_PASSWORD_AUTH",
+        "ALLOW_USER_SRP_AUTH",
+        "ALLOW_REFRESH_TOKEN_AUTH"
+      ],
+      "LastModifiedDate": "2026-05-30T07:03:01.082Z",
+      "TokenValidityUnits": {
+        "AccessToken": "hours",
+        "IdToken": "minutes",
+        "RefreshToken": "days"
+      },
+      "UserPoolId": "local_0RBa2N3u"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "extends": ["stylelint-config-standard", "stylelint-config-tailwindcss"],
+  "rules": {
+    "at-rule-no-unknown": [
+      true,
+      {
+        "ignoreAtRules": ["tailwind", "apply", "variants", "responsive", "screen", "layer", "theme", "custom-variant", "import"]
+      }
+    ],
+    "function-no-unknown": [
+      true,
+      {
+        "ignoreFunctions": ["theme", "screen", "oklch"]
+      }
+    ],
+    "no-descending-specificity": null,
+    "import-notation": null,
+    "selector-class-pattern": null,
+    "custom-property-pattern": null,
+    "declaration-block-no-redundant-longhand-properties": null,
+    "lightness-notation": null,
+    "hue-degree-notation": null,
+    "alpha-value-notation": null,
+    "color-function-notation": null,
+    "rule-empty-line-before": null,
+    "declaration-empty-line-before": null,
+    "font-family-name-quotes": null
+  }
+}

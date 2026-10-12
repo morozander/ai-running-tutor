@@ -1,0 +1,144 @@
+---
+description: React Router v7 — createBrowserRouter, ROUTES const, guards
+globs: "frontend/src/router/**/*,frontend/src/shared/config/routes.ts,frontend/src/pages/**/*"
+alwaysApply: false
+---
+
+# Frontend Routing
+
+Router: **React Router v7** with `createBrowserRouter` and object-based config. **No JSX `<Routes>`.**
+
+## Route declaration
+
+```tsx
+// src/app/router.tsx
+import { createBrowserRouter, RouterProvider } from 'react-router';
+import { ROUTES } from '@/shared/config/routes';
+
+export const router = createBrowserRouter([
+  {
+    Component: GuestLayout,
+    children: [
+      { path: ROUTES.SIGN_IN, Component: SignInPage },
+      { path: ROUTES.SIGN_UP, Component: SignUpPage },
+    ],
+  },
+  {
+    path: '/',
+    Component: ProtectedLayout,  // applies AuthGuard
+    children: [
+      { index: true, element: <Navigate to={ROUTES.DASHBOARD} /> },
+      { path: ROUTES.DASHBOARD, Component: DashboardPage },
+      {
+        Component: AdminLayout,
+        children: [
+          { path: ROUTES.ADMINS, Component: AdminsPage },
+        ],
+      },
+    ],
+  },
+  { path: '*', Component: NotFoundPage },
+]);
+```
+
+## ROUTES constants
+
+**Every route path lives in `src/shared/config/routes.ts` as `as const`.** No magic strings anywhere else.
+
+```ts
+// src/shared/config/routes.ts
+export const ROUTES = {
+  SIGN_IN: '/sign-in',
+  SIGN_UP: '/sign-up',
+  DASHBOARD: '/dashboard',
+  CLASSES: '/classes',
+  CLASS_EDIT: '/classes/:id/edit',
+  ADMINS: '/admins',
+} as const;
+export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
+```
+
+For parameterized paths, add a typed builder:
+
+```ts
+export const buildClassEditPath = (id: string) =>
+  ROUTES.CLASS_EDIT.replace(':id', id);
+```
+
+## Route-level code splitting
+
+The signal: *is this route's bundle something a first-paint user doesn't need?*
+
+- **WHEN a route subtree is heavy or rarely visited** (admin areas, editors, report/PDF views) → split it at the route with React Router v7's `lazy`:
+
+```tsx
+{ path: ROUTES.ADMINS, lazy: () => import('@/pages/admins') }
+```
+
+- **WHEN the route is on the critical first-paint path** (sign-in, the default dashboard) → keep it eager; lazy-loading it just adds a loading flash.
+- Split at routes, not components — component-level `React.lazy` inside a page is rarely worth the suspense plumbing.
+- Chunk-load failures after deploys are handled globally via `vite:preloadError` — see [ux.md](./ux.md); don't add per-route retry logic.
+
+## Guards
+
+Two guard primitives:
+
+### AuthGuard
+
+```tsx
+export function AuthGuard() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
+
+  if (isLoading) return <Loader />;
+  if (!isAuthenticated) {
+    return <Navigate to={ROUTES.SIGN_IN} state={{ redirect: location.pathname }} replace />;
+  }
+  return <Outlet />;
+}
+```
+
+### RoleGuard
+
+```tsx
+export function RoleGuard({ allowedRoles }: { allowedRoles: UserRole[] }) {
+  const { role } = useUserRole();
+  if (!role || !allowedRoles.includes(role)) {
+    return <ErrorPage type="forbidden" />;
+  }
+  return <Outlet />;
+}
+```
+
+## Navigation
+
+Always via `useNavigate()` from `react-router`. **Never use `window.location` for navigation.**
+
+```ts
+const navigate = useNavigate();
+navigate(ROUTES.DASHBOARD);
+navigate(buildClassEditPath(classId));
+```
+
+## URL state
+
+Use `useSearchParams()` for query strings. For typed URL state, wrap in a feature-specific hook:
+
+```ts
+// features/classes/hooks/use-classes-filters.ts
+export function useClassesFilters() {
+  const [params, setParams] = useSearchParams();
+  return {
+    page: Number(params.get('page') ?? 1),
+    search: params.get('search') ?? '',
+    setPage: (n: number) => setParams(p => { p.set('page', String(n)); return p; }),
+  };
+}
+```
+
+## Hard rules
+
+- ❌ Never hardcode route strings — always `ROUTES.X` or a builder
+- ❌ Never `window.location.href = '...'` — use `navigate()`
+- ❌ Never JSX `<Route>` declarations — use the object config
+- ❌ Never navigate inside a render function — use `useEffect` or event handlers

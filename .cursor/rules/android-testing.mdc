@@ -1,0 +1,47 @@
+---
+description: JUnit in unit tests, fakes over mocks, and which Gradle task to run
+globs: "mobile/android/**/src/test/**/*.kt,mobile/android/**/src/androidTest/**/*.kt"
+alwaysApply: false
+---
+
+# Testing
+
+Every new feature and every bug fix ships with tests. A bug fix needs a regression test that fails before the fix and passes after.
+
+## Placement
+
+| Code under test | Source set |
+|---|---|
+| Pure logic — domain rules, use cases, ViewModel state transitions | `src/test` (JVM unit test) |
+| Code that genuinely needs the framework | `src/test` with Robolectric, or `src/androidTest` (instrumented) |
+
+Prefer JVM unit tests; reserve instrumented (`src/androidTest`, on a device/emulator) for what truly can't run on the JVM. A module without tests yields a Gradle `NO-SOURCE` — expected, not a failure.
+
+Because a ViewModel's `viewModelScope` runs on `Dispatchers.Main`, a ViewModel unit test must swap in a test dispatcher: `Dispatchers.setMain(UnconfinedTestDispatcher())` in `@Before`, `Dispatchers.resetMain()` in `@After`.
+
+## Tooling
+
+`JUnit4` plus `kotlinx-coroutines-test` (`runTest`). **No mocking framework is on the classpath and none should be added** — the convention is hand-written fakes.
+
+## What to test
+
+Highest value first: pure domain rules and use-case orchestration; then ViewModel state transitions and submit/enable gates. Prefer pure-logic tests over UI tests.
+
+## Commands
+
+Run from `mobile/android/`:
+
+```bash
+./gradlew testDebugUnitTest                 # JVM unit tests across all modules that have them
+./gradlew :features:testDebugUnitTest       # one module
+./gradlew :app:connectedDebugAndroidTest    # instrumented tests (needs a booted emulator/device)
+```
+
+**A green exit code is not proof the suite ran.** Gradle skips an up-to-date test task and still reports success. Confirm fresh JUnit XML with a non-zero test count under `<module>/build/test-results/testDebugUnitTest/`.
+
+## Anti-patterns
+
+- ❌ Adding MockK or Mockito
+- ❌ Asserting on a `Flow` without `runTest`
+- ❌ A test that needs Koin — construct the subject directly
+- ❌ `./gradlew check` as a stand-in for the test task; it folds lint into the test verdict

@@ -1,0 +1,270 @@
+name: validate
+
+# Quality gates: lint, test, security scans, license & dead-code checks.
+# Runs on every push (except tags) and on every pull request.
+on:
+  push:
+    tags-ignore:
+      - "**"
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-backend:
+    runs-on: ubuntu-latest
+    container: node:22-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .pnpm-store
+          key: pnpm-backend-${{ hashFiles('backend/pnpm-lock.yaml') }}
+      - name: Install
+        working-directory: backend
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm config set store-dir "${GITHUB_WORKSPACE}/.pnpm-store"
+          pnpm install --no-frozen-lockfile --ignore-scripts
+      - name: Check
+        working-directory: backend
+        run: pnpm check
+
+  test-backend:
+    runs-on: ubuntu-latest
+    container: node:22-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .pnpm-store
+          key: pnpm-backend-${{ hashFiles('backend/pnpm-lock.yaml') }}
+      - name: Install
+        working-directory: backend
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm config set store-dir "${GITHUB_WORKSPACE}/.pnpm-store"
+          pnpm install --no-frozen-lockfile --ignore-scripts
+      - name: Test
+        working-directory: backend
+        run: pnpm test
+
+  lint-frontend:
+    runs-on: ubuntu-latest
+    container: node:22-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .pnpm-store
+          key: pnpm-frontend-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+      - name: Install
+        working-directory: frontend
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm config set store-dir "${GITHUB_WORKSPACE}/.pnpm-store"
+          pnpm install --no-frozen-lockfile --ignore-scripts
+      - name: Lint
+        working-directory: frontend
+        run: pnpm lint
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    container: node:22-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .pnpm-store
+          key: pnpm-frontend-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+      - name: Install
+        working-directory: frontend
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm config set store-dir "${GITHUB_WORKSPACE}/.pnpm-store"
+          pnpm install --no-frozen-lockfile --ignore-scripts
+      - name: Test
+        working-directory: frontend
+        run: pnpm test
+
+  lint-mobile:
+    runs-on: ubuntu-latest
+    container: node:22-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: mobile/expo-boilerplate/node_modules
+          key: yarn-mobile-${{ hashFiles('mobile/expo-boilerplate/yarn.lock') }}
+      - name: Install
+        working-directory: mobile/expo-boilerplate
+        run: |
+          corepack enable
+          yarn install --immutable
+      - name: Lint
+        working-directory: mobile/expo-boilerplate
+        run: yarn lint
+
+  test-mobile:
+    runs-on: ubuntu-latest
+    container: node:22-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: mobile/expo-boilerplate/node_modules
+          key: yarn-mobile-${{ hashFiles('mobile/expo-boilerplate/yarn.lock') }}
+      - name: Install
+        working-directory: mobile/expo-boilerplate
+        run: |
+          corepack enable
+          yarn install --immutable
+      - name: Test
+        working-directory: mobile/expo-boilerplate
+        run: yarn test:ci
+
+  lint-dockerfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: backend/Dockerfile
+
+  scan-secrets:
+    runs-on: ubuntu-latest
+    container:
+      image: zricethezav/gitleaks:v8.30.0
+      options: --entrypoint ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks (diff range)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            SCAN_RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            SCAN_RANGE="${{ github.event.before }}..${{ github.sha }}"
+          else
+            SCAN_RANGE="HEAD~1..HEAD"
+          fi
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          gitleaks detect --source . --config .github/configs/.gitleaks.toml --verbose --redact --log-opts "$SCAN_RANGE"
+
+  scan-trivy:
+    runs-on: ubuntu-latest
+    container:
+      image: aquasec/trivy:0.69.1
+      options: --entrypoint ""
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy fs
+        run: |
+          trivy fs \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --scanners vuln,secret,misconfig \
+            --ignorefile .github/configs/.trivyignore \
+            --skip-files ./backend/pnpm-lock.yaml \
+            .
+
+  scan-dependencies:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    container:
+      image: ghcr.io/google/osv-scanner:v2.3.3
+      options: --entrypoint ""
+    steps:
+      - uses: actions/checkout@v4
+      - name: OSV Scanner
+        run: /osv-scanner scan --recursive . --config .github/configs/osv-scanner.toml
+
+  license-check-backend:
+    runs-on: ubuntu-latest
+    container: node:22-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install & check licenses
+        working-directory: backend
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm config set store-dir "${GITHUB_WORKSPACE}/.pnpm-store"
+          pnpm install --no-frozen-lockfile --ignore-scripts
+          pnpm dlx license-checker-rseidelsohn --summary
+
+  license-check-frontend:
+    runs-on: ubuntu-latest
+    container: node:22-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install & check licenses
+        working-directory: frontend
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm config set store-dir "${GITHUB_WORKSPACE}/.pnpm-store"
+          pnpm install --no-frozen-lockfile --ignore-scripts
+          pnpm dlx license-checker-rseidelsohn --summary
+
+  license-check-mobile:
+    runs-on: ubuntu-latest
+    container: node:22-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install & check licenses
+        working-directory: mobile/expo-boilerplate
+        run: |
+          corepack enable
+          yarn install --immutable
+          npx license-checker-rseidelsohn --summary
+
+  knip-backend:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    container: node:22-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - name: Knip
+        working-directory: backend
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm config set store-dir "${GITHUB_WORKSPACE}/.pnpm-store"
+          pnpm install --no-frozen-lockfile --ignore-scripts
+          pnpm dlx knip
+
+  knip-frontend:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    container: node:22-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - name: Knip
+        working-directory: frontend
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm config set store-dir "${GITHUB_WORKSPACE}/.pnpm-store"
+          pnpm install --no-frozen-lockfile --ignore-scripts
+          echo 'VITE_APP_API_URL=https://placeholder' > .env
+          pnpm dlx knip
+
+  checkov:
+    runs-on: ubuntu-latest
+    container:
+      image: bridgecrew/checkov:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkov (soft-fail)
+        run: checkov -d "${GITHUB_WORKSPACE}/iaac/" --framework terraform --output cli --soft-fail --config-file "${GITHUB_WORKSPACE}/.github/configs/checkov.yaml"

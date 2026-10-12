@@ -1,0 +1,90 @@
+---
+description: MikroORM migration workflow — generate via schema diff, never hand-write
+globs: "backend/src/core/database/migrations/**/*.ts,backend/src/**/*.entity.ts,backend/mikro-orm.config.ts"
+alwaysApply: false
+---
+
+# Backend Migrations
+
+MikroORM generates migrations from the diff between entity definitions and the live DB schema. **The implement subagent must run this command; do NOT hand-write migration SQL.**
+
+## Commands
+
+Use the migration scripts defined in `backend/package.json` — read the scripts block, don't assume names. e.g. (THIS repo):
+
+```bash
+cd backend
+pnpm db:migrate:create   # diff entity schema vs DB → emits a new file in src/core/database/migrations/
+pnpm db:migrate:up       # apply pending migrations
+pnpm db:migrate:down     # roll back one
+pnpm db:migrate:fresh    # drop + re-create the schema (dev only) — does NOT seed
+pnpm db:seed             # seeding is a separate script (runs the MikroORM seeders)
+```
+
+The migrations directory is whatever `mikro-orm.config.ts` says (`migrations.path`) — e.g. (THIS repo): `src/core/database/migrations/`, not `src/migrations/`.
+
+## Workflow during a task
+
+A task that changes an entity (add a column, change a relationship, etc.) follows this sequence:
+
+1. Modify the entity file(s) — `@Property()`, `@ManyToOne()`, etc.
+2. Run the create script (e.g. (THIS repo): `pnpm db:migrate:create`)
+3. **Review the generated migration file** — make sure it matches what you intended
+4. Apply it locally (e.g. `pnpm db:migrate:up`) to confirm it applies cleanly
+5. Run backend tests — DB-touching tests should still pass
+6. Commit entity changes + generated migration file in **one commit** with a Conventional Commits subject
+
+If the create script produces output you didn't expect (unexpected DROP, missing column, etc.), stop and investigate. Don't apply it.
+
+## Naming
+
+MikroORM names migration files like `Migration20260528123456.ts`. **Don't rename** — the timestamp is the ordering key.
+
+The class name inside follows `MigrationYYYYMMDDHHmmss`. Inside, the `up()` and `down()` methods receive a `Migration` helper.
+
+## Generated migration shape
+
+```ts
+// backend/src/core/database/migrations/Migration20260528120000.ts
+import { Migration } from '@mikro-orm/migrations';
+
+export class Migration20260528120000 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql('alter table "users" add column "last_login_at" timestamptz null;');
+  }
+
+  override async down(): Promise<void> {
+    this.addSql('alter table "users" drop column "last_login_at";');
+  }
+}
+```
+
+The generator emits `addSql()` calls. **Don't hand-edit these** unless you have a specific reason (e.g., data backfill alongside schema change) — and if you do, also write `down()` that reverses it.
+
+## Data-shape migrations (schema + data)
+
+If a migration needs to both change schema and backfill data:
+
+1. Generate the schema migration as above
+2. Add `addSql('update ...')` for the backfill in the same migration class
+3. Make sure `down()` reverses both the schema and the data change
+4. Test with a dataset that exercises edge cases
+
+## Production deploy
+
+How migrations reach an environment is deploy-pipeline-specific — VERIFY where the up-script runs (CI job, release step, dedicated infra, or manual) before assuming a deploy applies your migration. e.g. (THIS repo): nothing in `lambda.ts` runs the migrator; a dedicated migrations Lambda runs the image with `db:migrate:up` as its command (see `iaac/terragrunt/<env>/.../lambdas/app/migrations` and `.gitlab/ci/scripts/pr-environment.sh`). For larger schema changes, coordinate with infra:
+
+- Long-running migrations may exceed Lambda timeout — run via a one-off ECS task or RDS Query Editor
+- Migrations on production should run during a maintenance window if they require a table lock
+- Always have a rollback plan — `down()` tested locally first
+
+## Hard rules
+
+- ❌ Hand-writing migration SQL from scratch — use the create script (e.g. (THIS repo): `pnpm db:migrate:create`)
+- ❌ Editing a migration once it's been applied to ANY environment (history is immutable)
+- ❌ Deleting a migration file (history is sacred)
+- ❌ Renaming the generated file or class
+- ❌ More than one logical schema change per migration
+- ❌ Schema migration without entity change in the same commit
+- ❌ Skipping a local `db:migrate:up` before committing
+- ❌ Pushing to remote with an unverified migration (the deploy pipeline will apply it to a shared environment)

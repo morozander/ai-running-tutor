@@ -1,0 +1,43 @@
+---
+name: leave-no-trace
+description: Ownership-based lifecycle discipline for long-lived processes and services the flow starts — ledger what YOU start, reuse it across passes, tear it down at phase end, never touch what you didn't start.
+globs: ["**/*"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: high
+---
+
+# Leave no trace — long-lived processes & services
+
+The flow boots real servers, containers, and emulators to verify work. The discipline is ownership-based, never "kill everything": **you own what you start; you never touch what you didn't.**
+
+## The ledger — the signal that separates flow-owned from foreign
+
+`.agentic/plans/<TICKET>/verify/runtime-ledger.json` — a JSON array with one entry per long-lived thing the flow started for this ticket. (A standalone run with no ticket dir keeps the ledger alongside its report dir, e.g. `/tmp/verify-<timestamp>/runtime-ledger.json`.)
+
+```json
+[
+  { "what": "frontend preview", "pid": 48212, "port": 4174,
+    "cmd": "mise exec -- pnpm preview --port 4173", "started_by": "runtime-smoke-verifier",
+    "started_at": "2026-06-10T14:02:11Z", "teardown": "kill 48212" },
+  { "what": "postgres (docker compose)", "container": "playground-db-1",
+    "cmd": "mise run docker-up", "started_by": "task-implementer t4",
+    "started_at": "2026-06-10T13:40:02Z", "teardown": "docker compose stop db && docker compose rm -f db" }
+]
+```
+
+Record the **ACTUAL** bound port (servers can auto-increment off a busy port), not the one you asked for.
+
+## The heuristic
+
+1. **Ledger before spawn.** Before starting any long-lived process (preview/dev server, compose service, emulator, watcher), check what is already running — the ledger first, then a port probe (`lsof -nP -iTCP:<port> -sTCP:LISTEN`) / `docker ps`. Record everything you DO start the moment you start it: what, pid/container name, actual port, command, who started it, when, and a one-line teardown command.
+
+2. **Reuse, don't stack.** WHEN a needed service is in the ledger from an earlier pass AND healthy → REUSE it; for a server that serves a build artifact, rebuild first so it serves the CURRENT code (e.g. (THIS repo) `vite preview` serves `dist/`, so build + reuse is correct). WHEN it's ledgered but unhealthy → tear it down via its recorded command and start fresh. WHEN something is running on the needed port but NOT in the ledger → it is FOREIGN (likely the dev's own dev-server/docker): never kill it, never verify against it (you can't know what build it serves) — start your own instance on a free port and ledger it. WHEN the foreign service is **fixed-port/fixed-name** (a compose DB pinned to its port, an emulator with a fixed container name) so "start your own on a free port" isn't possible → that's an **environment conflict, a human_blocker**: name the conflict and the exact choice the dev must make ("a non-flow `<service>` is bound to `<port>` — stop it, or tell me to use it") — never resolve it by killing or silently adopting the foreign instance. EXCEPTION — **foreign-but-shareable display targets**: a dev-booted iOS Simulator / Android emulator is a render surface, not a build-serving server — RENDERING your own app build on it is fine (the "can't know what build it serves" concern doesn't apply; you installed the build); shutting it down is still off-limits.
+
+3. **Idempotent bring-up ≠ destructive reset.** Some "up" tasks are safe to repeat (`docker compose up -d` no-ops on already-running services — ledger only what it actually started); others are a teardown in disguise. e.g. (THIS repo) `mise run cognito-up` removes the cognito-local container AND wipes + reseeds its emulator state — re-running it mid-loop destroys what the prior pass seeded, and running it while a foreign cognito-local is up destroys the dev's own instance. Reuse the running emulator unless a fresh reset is the point; before repeating any up-task, check what it actually does.
+
+4. **Disposition at phase end — default is teardown.** WHEN the phase ends moving forward (verify PASS → handoff; ticket done) → tear down every ledger entry via its recorded command, confirm gone (port probe / `docker ps`), clear the ledger. An entry whose process is already dead = confirm gone + clear, not an error (a crashed run leaves stale entries). WHEN the flow comes straight back (verify LOOP → fix → re-verify) → leave ledgered services up for reuse and say so. WHEN the run ends paused for a human (ESCALATE, iteration ceiling, any pause gate) → leaving the environment up IS the right call for live inspection — but the pause message MUST list exactly what is left running + the one-line teardown for each (per-SERVICE, e.g. (THIS repo) `docker compose stop db && docker compose rm -f db`, `kill <pid>` — never whole-stack `mise run docker-down` unless every compose service is yours). Left-up is a deliberate, reported state, never a silent default.
+
+5. **Never tear down what you didn't start.** Anything healthy that predates the run and isn't in the ledger belongs to the dev — off-limits at PASS, at done, and at `--reset`.
+
+6. **Flow-signature orphans.** WHEN an unledgered process matches the flow's own boot pattern (same command against this repo's app dirs — likely a crashed or pre-ledger run) → surface it to the dev with its teardown one-liner; never silently work around it, never kill it unasked.

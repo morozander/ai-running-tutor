@@ -1,0 +1,35 @@
+---
+name: kmp-platform-best-practices
+description: Official Google and Apple best practices for the KMP app
+globs: ["mobile/kmp/**/*.kt"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: normal
+---
+
+# Platform best practices
+
+Follow official Google and Apple recommendations; prefer documented platform APIs over ad-hoc workarounds.
+
+## Android / Google
+
+- Modern APIs (AndroidX, Jetpack, Compose).
+- Runtime / install-time permissions for hardware and sensitive access (location, camera, Bluetooth, notifications) per current Android docs.
+- Background work and foreground services only when required; follow current background-execution limits.
+- Edge-to-edge and system bars as set in the host `MainActivity`.
+- Accessibility: content descriptions, sufficient contrast, adequate touch targets.
+
+## iOS / Apple
+
+- Respect the Human Interface Guidelines for layout, safe areas, and gestures.
+- Privacy: an `Info.plist` usage description for each capability (e.g. `NSLocationWhenInUseUsageDescription`, `NSCameraUsageDescription`, Bluetooth/mic/photo equivalents).
+- Privacy manifests and background modes only when required for the capability.
+- Keep `iosApp` thin; shared UI stays in Compose Multiplatform `:features`.
+
+## Cross-platform
+
+- Shared logic in `commonMain`; all OS capabilities MUST live in `:platform` (`expect`/`actual` or wrappers).
+- App hosts (`:androidApp` / `iosApp`) MUST declare all permissions and privacy usage descriptions.
+- `:features` MUST NOT call Android/iOS SDKs directly.
+- Do not bypass module boundaries to "make it work" on one OS.
+- When Google and Apple guidance diverges, isolate the difference in `:platform` and keep UX consistent in `:features` / `:styleguide`.

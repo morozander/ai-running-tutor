@@ -1,0 +1,80 @@
+---
+description: Backend-specific style — Biome config, path aliases, Lefthook, JSDoc
+globs: "backend/**/*.ts"
+alwaysApply: false
+---
+
+# Backend Code Style
+
+For repo-wide TypeScript rules, see [_shared/typescript.md](../_shared/typescript.md).
+
+## Tooling
+
+- **Biome** for linting and formatting (not ESLint, not Prettier)
+- **Lefthook** for git hooks (not Husky)
+
+Config: [backend/biome.json](../../../backend/biome.json), [lefthook.yml](../../../lefthook.yml).
+
+## Path aliases
+
+Backend uses these aliases (configured in `tsconfig.json`):
+
+| Alias | Resolves to |
+|---|---|
+| `@core/*` | `backend/src/core/*` |
+| `@modules/*` | `backend/src/modules/*` |
+| `@shared/*` | `backend/src/shared/*` |
+| `@config/*` | `backend/src/config/*` |
+
+Always import via alias for cross-folder imports. Relative imports only within the same module.
+
+```ts
+// ✅
+import { UserService } from '@modules/domain/user/services/user.service';
+import { EntityManager } from '@mikro-orm/postgresql';
+
+// ❌
+import { UserService } from '../../../modules/domain/user/services/user.service';
+```
+
+## Import order (auto-organized by Biome)
+
+1. Node.js built-ins (`node:*`)
+2. External packages (`@nestjs/*`, `@mikro-orm/*`)
+3. Internal aliases (`@core/*`, `@modules/*`, `@shared/*`, `@config/*`)
+4. Relative imports (`./`, `../`)
+
+## Biome formatter settings
+
+From `biome.json`:
+
+- Indent: 2 spaces
+- Line width: 100
+- Single quotes
+- Trailing commas (all)
+- Semicolons always
+- Arrow function parentheses always
+
+## JSDoc for public APIs
+
+```ts
+/**
+ * Find a user by ID.
+ *
+ * @param id - The user's unique identifier (Cognito sub)
+ * @returns The user entity
+ * @throws EntityNotFoundException if user not found
+ */
+async findById(id: string): Promise<User> { ... }
+```
+
+Required on every public method of every service. Skip for `@Field()` getters and trivial accessors.
+
+## Commands
+
+```bash
+cd backend
+pnpm check         # lint + format check
+pnpm check:fix     # auto-fix
+pnpm format        # format only
+```

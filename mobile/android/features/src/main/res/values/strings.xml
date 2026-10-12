@@ -1,0 +1,8 @@
+<resources>
+    <string name="home_title">Android App</string>
+    <string name="home_loading">Loading…</string>
+    <string name="home_retry">Retry</string>
+    <string name="home_open_details">Open details</string>
+    <string name="details_title">Details for %1$s</string>
+    <string name="details_back">Back</string>
+</resources>

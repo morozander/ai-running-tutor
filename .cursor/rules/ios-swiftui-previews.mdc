@@ -1,0 +1,29 @@
+---
+description: SwiftUI #Preview in the same file as the view, wrapped in styleguide
+globs: "mobile/ios/Features/**/*.swift,mobile/ios/Styleguide/**/*.swift"
+alwaysApply: false
+---
+
+# SwiftUI previews
+
+Each view ships a `#Preview` in the **same file**, building a `Store` with overridden dependencies so
+the preview is deterministic and needs no live data.
+
+```swift
+#Preview {
+    HomeView(
+        store: Store(initialState: HomeFeature.State()) {
+            HomeFeature()
+        } withDependencies: {
+            $0.platformInfo.platformName = { "Preview" }
+        }
+    )
+}
+```
+
+## Rules
+
+- Colocate the preview with the view; no separate `*Preview.swift`.
+- Override dependencies in the preview's `Store` (never hit the live value).
+- Provide a useful state (default / loading / error) when the screen has meaningful variants.
+- Use `:Styleguide` tokens/components in previews; reusable components in `:Styleguide` also ship a `#Preview`.

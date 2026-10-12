@@ -1,0 +1,209 @@
+---
+name: frontend-forms
+description: React Hook Form + Zod patterns — schema location, FormContext, dialog reset
+globs: ["frontend/src/**/*.tsx", "frontend/src/**/*.ts"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: high
+---
+
+# Frontend Forms
+
+**React Hook Form v7 + Zod v4** for every form. **Never** roll your own form state.
+
+## Schema location
+
+Every form schema lives in `features/<feature>/schemas/<form-name>-schema.ts` (feature-specific) or `shared/schemas/<form-name>-schema.ts` (cross-feature).
+
+```ts
+// features/admins/schemas/admin-form-schema.ts
+import * as z from 'zod';
+
+export const adminFormSchema = z.object({
+  firstName: z.string().min(2, 'First name must be at least 2 characters').max(50),
+  lastName: z.string().min(2).max(50),
+  email: z.string().min(1, 'Email is required').email('Invalid email'),
+  phone: z.string().optional(),
+});
+
+export type AdminFormValues = z.infer<typeof adminFormSchema>;
+```
+
+Schemas are the **single source of truth** for both validation and form value types.
+
+## Shared schema helpers
+
+Reusable schema fragments live in `shared/lib/form-schemas.ts`:
+
+```ts
+import * as z from 'zod';
+
+export const REQUIRED_MESSAGE = 'This field is required';
+
+export const getEmailSchema = () =>
+  z.string().min(1, REQUIRED_MESSAGE).email('Please enter a valid email');
+
+export const getNameSchema = () =>
+  z.string().min(1, REQUIRED_MESSAGE).min(2, 'At least 2 characters').max(70, 'Max 70 characters');
+```
+
+## Form initialization
+
+```ts
+const form = useForm<AdminFormValues>({
+  resolver: zodResolver(adminFormSchema),
+  defaultValues: { firstName: '', lastName: '', email: '', phone: undefined },
+  mode: 'onSubmit',
+  reValidateMode: 'onChange',
+});
+
+const { control, handleSubmit, formState, reset, setError, watch } = form;
+```
+
+**Always destructure** — never chain like `form.formState.isDirty`.
+
+**Always specify `mode` and `reValidateMode`.** The combination above is the project default.
+
+## Submission
+
+Name the callback `onSubmit`. Wrap with `handleSubmit` in the JSX:
+
+```tsx
+const onSubmit = async (values: AdminFormValues) => {
+  await createAdmin({ variables: { input: values } });
+  reset();
+};
+
+<form onSubmit={handleSubmit(onSubmit)} noValidate>
+```
+
+`noValidate` is always set — Zod owns validation, the browser doesn't.
+
+Use `formState.isSubmitting` for loading state — **never** a separate `useState`.
+
+## FormProvider for child components
+
+When form fields live in child components, wrap with `FormProvider` and let children pull from context. **Never pass the `form` object as a prop:**
+
+```tsx
+// Parent
+<FormProvider {...form}>
+  <form onSubmit={handleSubmit(onSubmit)} noValidate>
+    <AdminFormFields />
+    <Button type="submit" isLoading={formState.isSubmitting}>Save</Button>
+  </form>
+</FormProvider>
+
+// Child
+export function AdminFormFields() {
+  const { control, formState } = useFormContext<AdminFormValues>();
+  // ...
+}
+```
+
+## Connecting inputs
+
+Always use `Controller` for custom inputs. For native HTML inputs, `register` is fine:
+
+```tsx
+<Controller
+  name="email"
+  control={control}
+  render={({ field, fieldState: { error } }) => (
+    <Input
+      {...field}
+      type="email"
+      label="Email"
+      error={!!error}
+      helperText={error?.message}
+    />
+  )}
+/>
+```
+
+**The shared field layer owns the accessibility wiring — once, never per callsite.** (THIS repo) the shadcn compound owns it via context: `FormItem` generates the id with `useId` and shares it through context so `FormLabel`/`FormControl`/`FormMessage` wire `htmlFor`, `aria-invalid`, and `aria-describedby` automatically — feature code composes `FormField`→`FormItem`→`FormLabel`+`FormControl`+`FormMessage` and never touches the attributes. The violation signal: a callsite hand-wiring `htmlFor`, `id`, or any `aria-*` — that contract belongs inside the field layer, whatever shape it takes.
+
+## File inputs as form fields
+
+Files go in the schema, not in separate `useState`:
+
+```ts
+const schema = z.object({
+  coverImage: z.instanceof(File).nullable(),
+});
+
+const coverImage = watch('coverImage');
+const previewUrl = useMemo(
+  () => (coverImage ? URL.createObjectURL(coverImage) : null),
+  [coverImage],
+);
+```
+
+## Dialog form reset
+
+Reset on `onOpenChange` — covers every close path (ESC, backdrop, X button, cancel):
+
+```tsx
+function handleOpenChange(isOpen: boolean) {
+  if (!isOpen) reset();
+  onOpenChange(isOpen);
+}
+
+<Dialog open={open} onOpenChange={handleOpenChange}>
+  <Button onClick={() => handleOpenChange(false)}>Cancel</Button>
+</Dialog>
+```
+
+## Server errors
+
+Surface server errors via `toast.error()` (global) for general failures, and `setError` for field-specific server validation:
+
+```ts
+try {
+  await createAdmin({ variables: { input: values } });
+} catch (error) {
+  if (isFieldError(error)) {
+    setError(error.field, { message: error.message });
+  } else {
+    toast.error(error.message ?? 'Operation failed');
+  }
+}
+```
+
+If your backend returns structured field errors via GraphQL extensions, build a `consumeResponseErrors` helper:
+
+```ts
+export function consumeResponseErrors<T extends FieldValues>(
+  errors: GraphQLError[],
+  setError: UseFormSetError<T>,
+  fallbackMessage: string,
+) {
+  const fieldErrors = errors.filter(e => e.extensions?.field);
+  fieldErrors.forEach(e =>
+    setError(e.extensions.field as Path<T>, { message: e.message })
+  );
+  if (fieldErrors.length === 0) toast.error(fallbackMessage);
+}
+```
+
+## Enum source of truth
+
+```ts
+export const USER_ROLE = ['ADMIN', 'TEACHER', 'STUDENT'] as const;
+export type UserRole = (typeof USER_ROLE)[number];
+
+const schema = z.object({
+  role: z.enum(USER_ROLE),
+});
+```
+
+## Hard rules
+
+- ❌ Never `useState` for form field values
+- ❌ Never `useState` for `isSubmitting` — use `formState.isSubmitting`
+- ❌ Never `useState` for file inputs or previews — put them in the schema
+- ❌ Never pass `form` as a prop to children — use `FormProvider` + `useFormContext`
+- ❌ Never inline a Zod schema in a component file — schemas go in `schemas/`
+- ❌ Never name a submit callback `handleSubmit` — conflicts with RHF's own `handleSubmit`
+- ❌ Never omit `noValidate` from a `<form>` — Zod owns validation
+- ❌ Never call `form.handleSubmit()` inside the form definition — wrap it in JSX

@@ -1,0 +1,180 @@
+---
+description: Per-stack foundation primitives. /start checks for these before approving a feature ticket. Missing foundation = either a separate foundation ticket or split into the current plan as type=foundation tasks.
+globs: "**/*"
+alwaysApply: false
+---
+
+# Foundation Prerequisites
+
+Foundation = **cross-cutting primitives that should exist before ANY feature ticket**. NOT ticket-specific work.
+
+## Critical distinction: foundation vs ticket scope
+
+A ticket is one story across all directions (FE/BE/mobile/devops). The ticket itself can include IaC changes, new entities, new modules — that's normal scope. Those are **tasks in the plan**, not foundation gaps.
+
+Foundation gaps are different — they're things you'd want to be true REGARDLESS of which feature you build. If you'd write the same "we need this primitive" note in a ticket about Apple sign-in AND a ticket about a notes feature AND a ticket about analytics, it's foundation. If it's only relevant to this specific ticket, it's part of the ticket's plan.
+
+| Type | Example | Where it lives |
+|---|---|---|
+| **Foundation** | Branded design tokens, BaseEntity, Apollo client setup, VPC, Cognito user pool itself, auth guard infrastructure | Foundation check; missing → dev decides bounce/split/force-proceed |
+| **Ticket scope** | "Add Apple as a Cognito identity provider" for an Apple sign-in ticket, "Add a `notes` table" for a notes ticket, "Add `appleUserId` field to User entity" for Apple sign-in | Tasks in the plan; distributed across packages by the planner |
+
+The wrong question: *"does Cognito have Apple configured?"* → that's part of the Apple sign-in ticket, not a foundation gap.
+
+The right question: *"does Cognito (the user pool itself) exist?"* → that's foundation. If missing, every auth-related ticket would be blocked.
+
+**Test for whether something is foundation**: would this be missing for ALL feature tickets, or only this one? If only this one → ticket scope, plan handles it. If across many → foundation, surface to dev.
+
+## Detection mechanism
+
+The `explorer` subagent (haiku) scans the codebase as part of `/start`. It returns TWO lists:
+
+1. **Foundation gaps** — cross-cutting primitives missing from the codebase (block; dev decides)
+2. **Feature-specific work** — primitives/configs needed for this ticket that aren't yet in the codebase (informational; planner turns these into tasks in the plan)
+
+`/start` only surfaces the foundation list as a gate; the feature-specific list flows into the planner.
+
+Dev chooses (only when foundation gaps exist):
+
+1. **Bounce** — close this ticket, create separate foundation ticket(s) first (recommended)
+2. **Split** — fold foundation tasks into the current plan, marked `type=foundation`, ordered first
+3. **Force-proceed** — proceed against stubs (expect mismatch)
+
+Plus a free-form clarification field per gate (see /work gate prompts).
+
+## Design system is foundation, not feature scope
+
+A **branded design system** is a foundation primitive, NOT feature-scope work. It is NOT just "tokens + fonts + primitives" — it includes the full branded design **SURFACE**. The general rule: the design system must reflect the **ticket's confirmed design** (its tokens, fonts, primitives, and brand surfaces), not the framework's generated defaults/stubs. What counts as "branded vs stub" is **derived from that confirmed design** — never from a fixed hex, font name, or component name. The pieces:
+
+- **Tokens + fonts + primitives** — the design's confirmed brand tokens (color/spacing/typography/radius) replacing the framework's default/stub palette, the design's brand fonts wired into the typography tokens, and shared themed primitives consuming those tokens. Per-stack shape: mobile theme tokens + brand fonts + icon assets + shared themed primitives; frontend `@theme inline` tokens + `shared/ui` primitives.
+- **Brand background/pattern surface** — the brand's background treatment (gradients/textures/imagery, e.g. an auth screen's named gradient like a lavender 'Bg pattern'), wrapped in a reusable themed surface. Wire whatever the design needs (e.g. `expo-linear-gradient` / `react-native-svg` on mobile, a CSS gradient or SVG on web).
+- **Branded splash/launch screen** — the brand's launch surface (logo + brand background), not the generator's default white/blank splash.
+- **Logo / wordmark glyph** — the brand's logo/wordmark (e.g. a "Conflead" wordmark) as a shared component/asset, consumable by any screen.
+- **Icon set / assets** — the design's required branded icons (e.g. provider icons, alert icons) as shared assets, not generator placeholders.
+
+A boilerplate that still ships the **framework's generated defaults** — e.g. an Expo stub tint (such as `#0a7ea4`), default Expo fonts/icons, the default Expo splash, or stock Tailwind/Vite tokens — has **no branded design system**, even though it "renders". So does one that has tokens/fonts/primitives but is missing the brand surfaces above (no brand background, no branded splash, no logo glyph, no provider/alert icons). Compare against the **ticket's confirmed design** to decide: if a surface still carries a generated default where the design specifies a brand treatment, that's a gap.
+
+This is a **BLOCKING foundation gap for ANY UI ticket** (mobile or frontend): you cannot build a screen to Figma against a stub palette and stock fonts, and **a feature ticket must not render against a design system missing the brand surfaces above** — the brand background, splash, logo, and icon assets all gate every UI ticket the same way tokens do. It is distinct from feature scope — adding the brand theme (tokens AND surfaces) is the same "we need this primitive" note across every UI ticket, so it's foundation (bounce/split/force-proceed), not a task you fold into one feature's plan. Apply the foundation-vs-ticket-scope test above: a single feature's specific component variant is ticket scope; the branded token/primitive/surface layer it sits on is foundation.
+
+(`design-parity` will report `inconclusive` rather than pass when it can't compare rendered output against Figma — a stub design system is a common cause.)
+
+## Per-stack checklists
+
+### Mobile (`mobile/expo-boilerplate/`)
+
+These are primitives that should exist regardless of which feature is being built.
+
+| Primitive | Check |
+|---|---|
+| **Branded design system (tokens + fonts + primitives)** | A real branded design system matching the ticket's confirmed design, NOT the Expo starter stub. `src/constants/theme.ts` palette matches Figma (the framework's stub tint colors — e.g. an Expo `#0a7ea4` default — are REPLACED, not extended); the design's brand fonts loaded via `expo-font` (`useFonts(...)`) and referenced by the typography tokens; branded icon assets present (not the default Expo icon set placeholders). Missing/stub branding = BLOCKING for any UI ticket (see note below). |
+| **Branded background/pattern surface** | The brand's background treatment (gradients/textures/imagery — e.g. an auth screen's named gradient like a lavender 'Bg pattern') exists as a reusable themed surface, NOT a flat stub color. Wire whatever the design needs (e.g. `expo-linear-gradient` for a gradient, `react-native-svg` for a vector pattern) plus a shared themed wrapper (e.g. `<ScreenBackground>` / `<GradientBackground>`) that consumes the design tokens. Missing = BLOCKING for any UI ticket whose Figma frame sits on the brand background. |
+| **Branded splash/launch screen** | A branded splash/launch screen (logo + brand background, configured via `expo-splash-screen` / `app.json` `splash`), NOT the default Expo white splash. Missing/stub = BLOCKING for any UI ticket (the launch surface is part of the brand). |
+| **Logo / wordmark glyph** | The brand's logo/wordmark (e.g. a "Conflead" wordmark) exists as a shared component/asset (e.g. `src/components/branding/Logo.tsx` + the source vector/raster asset), consumable by any screen — NOT inlined per-screen or absent. Missing = BLOCKING for any UI ticket that renders brand identity. |
+| **Icon set / assets** | The design's required branded icon set/assets are present — e.g. provider icons (Apple/Google/etc.), alert/status icons — as shared assets, NOT the default Expo icon placeholders. Missing = BLOCKING for any UI ticket that renders these glyphs. |
+| **Themed primitives** | `<ThemedText>`, `<ThemedView>` reference branded tokens; a shared branded `<Button>` plus other themed primitives (`<Input>`, `<Card>`) exist and consume the design tokens (not raw hex / not the stub tint) |
+| **Apollo client** | `src/api/client.ts` with link chain (auth + error + http) + `apollo3-cache-persist` configured |
+| **Auth provider** | `<AuthProvider>` exists; wraps `<Stack>` in `app/_layout.tsx`; exposes `useAuthContext()` |
+| **Expo Router auth split** | `app/(public)/` or `app/(auth)/` and `app/(authenticated)/` group structure |
+| **i18n init** | `src/config/i18n.ts` + `expo-localization` + at least `en.json` in `assets/locales/` |
+| **Secure storage helper** | `expo-secure-store` wrapper for token persistence |
+
+Note what's NOT here (ticket scope, not foundation):
+- Specific Expo plugins (`expo-apple-authentication`, etc.) — those are added by the feature ticket that needs them
+- Specific auth providers — those are wired by the feature ticket
+- Feature-specific screens — built in the feature ticket
+
+### Frontend (`frontend/`)
+
+| Primitive | Check |
+|---|---|
+| **Branded design system (tokens + fonts + primitives)** | A real branded design system matching the ticket's confirmed design, NOT Tailwind/Vite defaults. `src/index.css` declares `@theme inline` with semantic colors, spacing, typography, radius matching Figma (the default Tailwind palette is REPLACED with the design's branded tokens; the design's brand fonts wired into the typography tokens); `src/shared/ui/` primitives consume these tokens. Missing branded tokens or `shared/ui` = BLOCKING for any UI ticket (see note below). |
+| **Branded background/pattern surface** | The brand's background treatment (gradients/textures/imagery — e.g. an auth screen's named gradient like a lavender 'Bg pattern') exists as a reusable themed surface (e.g. a CSS gradient or SVG wired into the theme + a shared `<ScreenBackground>` / layout primitive in `src/shared/ui/`), NOT a flat stub color. Missing = BLOCKING for any UI ticket whose Figma frame sits on the brand background. |
+| **Branded splash/launch screen** | A branded launch/loading surface (logo + brand background — e.g. the initial `index.html` / app-shell loading state and any branded route loader), NOT a blank/default screen. Missing/stub = BLOCKING for any UI ticket (the launch surface is part of the brand). |
+| **Logo / wordmark glyph** | The brand's logo/wordmark (e.g. a "Conflead" wordmark) exists as a shared component/asset (e.g. `src/shared/ui/Logo.tsx` + the source SVG asset), consumable by any page — NOT inlined per-page or absent. Missing = BLOCKING for any UI ticket that renders brand identity. |
+| **Icon set / assets** | The design's required branded icon set/assets are present — e.g. provider icons (Apple/Google/etc.), alert/status icons — as shared assets/components, NOT placeholders. Missing = BLOCKING for any UI ticket that renders these glyphs. |
+| **`cn()` utility** | A `cn()` helper wrapping `twMerge(clsx(...))`, extended for custom tokens (the frontend rules target `src/shared/lib/cn.ts`; e.g. (THIS repo) it currently lives at `src/lib/cn/cn.ts` — check for the primitive, not only the literal path) |
+| **Branded primitives** | `src/shared/ui/` has at minimum `<Button>`, `<Input>`, `<Card>`, `<Dialog>` with CVA variants pointing at tokens (not raw hex) |
+| **Apollo client** | `src/graphql/client.ts` with link chain (errorLink + authLink + httpLink) wired to the app's auth provider — don't hand-roll token storage or a refresh queue when the auth library already manages sessions (e.g. (THIS repo): Amplify `fetchAuthSession` supplies and refreshes tokens; see `frontend/data.md`) |
+| **GraphQL codegen** | `codegen.ts` config + generated output at `src/graphql/generated/`; never hand-write |
+| **Forms base** | `<BaseForm>` wrapper, `<FormField>` primitives, RHF + Zod via `@hookform/resolvers` |
+| **Routes** | A `ROUTES` const (no magic strings) + `<AuthGuard>`/`<RoleGuard>` exist (the frontend rules target `src/shared/config/routes.ts`; check for the convention, not only the literal path — e.g. (THIS repo) router config lives at `src/router/`) |
+| **UX primitives** | `<Loader>`, `<Spinner>`, `<Skeleton>`, `<EmptyState>` per `.agentic/rules/frontend/ux.md` |
+| **Toaster** | `<Toaster>` mounted once at app root; `toast.success`/`toast.error` from sonner |
+
+### Backend (`backend/`)
+
+| Primitive | Check |
+|---|---|
+| **BaseEntity** | A BaseEntity with `id`, `createdAt`, `updatedAt`, `deletedAt` + soft-delete helpers — AND the `softDelete` filter registered in the RUNTIME ORM options, not only the CLI config (e.g. (THIS repo): `src/shared/database/base.entity.ts`; filter defined in `src/core/database/mikro-orm.shared-options.ts`, shared by both the CLI config and the runtime `DatabaseModule`) |
+| **Naming strategy** | `UnderscoreNamingStrategy` configured in `mikro-orm.config.ts` |
+| **MikroORM driver** | `driver: PostgreSqlDriver` configured + connection pool settings appropriate for Lambda |
+| **Auth guard** | A Cognito JWT validation guard (e.g. (THIS repo): `src/core/auth/guards/auth.guard.ts`) + `<CurrentUser>` decorator + `<Roles>` decorator + `RolesGuard` |
+| **GraphQL exception filter** | A filter mapping `DomainException` subclasses to GraphQL errors (e.g. (THIS repo): `src/core/exceptions/graphql-exception.filter.ts`) |
+| **Domain exceptions** | `EntityNotFoundException`, `EntityAlreadyExistsException`, `DomainValidationException`, etc. defined |
+| **OpenTelemetry SDK** | `src/core/telemetry/tracing.ts` started before the Nest app is created in `main.ts` / `lambda.ts` (e.g. (THIS repo): `otelSDK.start()` runs in bootstrap before `NestFactory.create`) |
+| **Lambda handler** | `src/lambda.ts` with `serverlessExpress` + lazy app bootstrap |
+| **GraphQL Apollo** | `GraphQLModule.forRoot` with `autoSchemaFile` for code-first; no subscriptions configured (they're opt-in — omitting the option disables them for Lambda; e.g. (THIS repo): `src/core/graphql/graphql.module.ts`) |
+| **Cognito module** | Wired in core; reads user pool / client id from env or Secrets Manager |
+| **Migrations** | A migrations directory configured in `mikro-orm.config.ts` (e.g. (THIS repo): `src/core/database/migrations/`) + the migration-create script defined in `backend/package.json` (e.g. (THIS repo): `pnpm db:migrate:create`) |
+
+### IaC (`iaac/`)
+
+These are the platform primitives. Specific identity providers, specific Lambdas, specific tables — those are ticket scope.
+
+| Primitive | Check |
+|---|---|
+| **VPC** | `iaac/terragrunt/<env>/<region>/vpc/terragrunt.hcl` with public + private + database subnets |
+| **Cognito user pool (existence)** | `iaac/terragrunt/<env>/<region>/cognito/terragrunt.hcl` defines a user pool |
+| **Cognito app client (existence)** | At least one app client per consumer (web, mobile, etc.) |
+| **RDS Aurora** | `iaac/terragrunt/<env>/<region>/rds-aurora/terragrunt.hcl` — engine version, encryption, secrets-manager rotation |
+| **ECR repos infrastructure** | `iaac/terragrunt/shared/<region>/ecr/` exists with a base module |
+| **Lambda infrastructure** | `iaac/terragrunt/<env>/<region>/lambdas/` with VPC config, env vars, IAM role |
+| **API Gateway** | `iaac/terragrunt/<env>/<region>/apigw/` (HTTP API v2, custom domain) |
+| **Security groups** | One per logical role (lambda-sg, rds-sg, jumpbox-sg) with explicit ingress/egress |
+| **Secrets Manager** | Module exists; specific secrets added by feature tickets |
+| **S3 + CloudFront** | For frontend hosting; OAC + bucket policies |
+| **Bootstrap state** | S3 backend exists (created by `bootstrap.sh`) |
+
+Note what's NOT here (ticket scope):
+- **Specific Cognito identity providers** (Apple, Google) — added by the feature ticket that needs them
+- **Specific Lambdas** — added by the backend feature ticket
+- **Specific secrets** — added by the feature that creates them
+- **New IaC modules for feature-specific resources** — that's the ticket's work
+
+## When foundation is "good enough"
+
+Foundation doesn't have to be feature-complete to ship a feature. The bar:
+
+- ✅ The primitive exists with the right shape and is imported by the new feature
+- ✅ The tokens/conventions match Figma/spec
+- ✅ The new feature can compile, render, and pass tests using the primitive
+
+Not required:
+
+- ❌ Every variant a Figma file shows must already exist (the feature ticket can add variants)
+- ❌ Every CRUD entity must already exist (the feature ticket can add entities)
+
+### Per-surface SPLIT-vs-BLOCK decision (resolves "always block" vs "good enough")
+
+The two statements above are in tension with the "BLOCKING for ANY UI ticket" rule — reconcile them per surface, with the burden of proof on DEFERRING, not on blocking. The branded **token/font/primitive core** still gates every UI ticket (you can't build to Figma against a stub palette). But an individual **brand SURFACE** (background/pattern, splash, logo glyph, provider/alert icons) is a deferrable FOLLOW-UP **only** when you can cite the specific cached **in-scope** frame(s) AND show that none of them render on or depend on that surface (the screen isn't painted over the brand bg-pattern, shows no logo/splash). The decision rule:
+
+- WHEN any in-scope frame visibly sits on / depends on a missing surface → that surface is **required for this ticket** (resolve via bounce or split-first, not deferred).
+- WHEN no in-scope frame depends on a surface → it MAY be a follow-up (a later ticket / separate foundation task).
+- WHEN you can't tell from the cached frames whether a surface is depended on → treat it as **depended-on (block)**; don't assume follow-up.
+
+Record the per-surface decision + the in-scope frame cited in `state.foundation_decision`. (This is the principled version of the CLA-2 call, where the in-scope form + list frames didn't depend on logo/splash/bg-pattern, so those were correctly deferred while the token increment was built.)
+
+## Where this hooks in
+
+- `/start` skill dispatches `explorer` with this checklist as part of its prompt
+- `explorer` returns a "Foundation requirements" section in its exploration.md output
+- `/start` parses that section; if any required primitive is missing, prompts the dev
+- Dev's choice (bounce / split / force-proceed) is logged in state.foundation_decision
+- `/plan` reads state.foundation_decision; if `split`, planner emits foundation tasks first
+
+## Hard rules
+
+- ❌ Silently building against missing foundation (always surface gaps)
+- ❌ Treating "tests pass" as evidence the feature works when foundation is missing (the design is broken; tests just don't know)
+- ❌ Inventing primitives during `/implement` — primitives go in foundation tasks, not feature tasks
+- ❌ Mixing foundation work with feature work in a single task (split per task type)

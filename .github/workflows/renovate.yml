@@ -1,0 +1,26 @@
+name: renovate
+
+# Self-hosted Renovate run (scheduled). Mirrors the previous GitLab job.
+on:
+  schedule:
+    - cron: '0 7 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    container:
+      image: renovate/renovate:43
+      options: --entrypoint ""
+    env:
+      RENOVATE_PLATFORM: github
+      RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+      RENOVATE_CONFIG_FILE: .github/configs/renovate.json
+      LOG_LEVEL: info
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Renovate
+        run: renovate ${{ github.repository }}

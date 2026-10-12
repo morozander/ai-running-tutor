@@ -1,0 +1,54 @@
+---
+name: ios-architecture
+description: Swift package boundaries and Clean Architecture + TCA for the mobile/ios app
+globs: ["mobile/ios/**/*.swift"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: high
+---
+
+# Package architecture
+
+Native iOS app (SwiftUI + The Composable Architecture). Xcode + SPM build rooted at `mobile/ios/` —
+Package/bundle root `com.monorepo.ios`. Clean Architecture; **features use TCA** (State/Action/Reducer)—
+the reducer owns screen state and effects.
+
+The layers are **local Swift packages** (each its own `Package.swift`, wired by `path`), not one
+monolithic target. Left column = what the package **owns**; right = what it **must not** contain.
+
+| Package | Owns | Must not own |
+|--------|------|--------------|
+| `ios` (Xcode app target) | Thin host — `iosApp.swift` builds `StoreOf<AppFeature>` and shows `AppView`; links `Features` + `Data` | Business rules, screen UI, styling |
+| `Features` | TCA reducers + SwiftUI views, navigation, the `AppFeature` root | Device APIs, design tokens, live data sources, direct `Data` dependency |
+| `Domain` | Models (with their rules), dependency-client interfaces (`@Dependency` clients), `Resource`. Base layer | UIKit/SwiftUI, TCA, live implementations |
+| `Data` | Live dependency values (`DependencyKey.liveValue`), remote/local data sources, **device/OS APIs** (UIDevice, CoreLocation, …) behind dependency clients, DTOs, mappers | UI, business rules |
+| `Styleguide` | Theme tokens (`AppColor`, `AppSpacing`), reusable SwiftUI components | Feature screens, device APIs |
+
+## Dependency direction
+
+```
+app (ios) ──► Features, Data           (links Data so the live DependencyKey is registered)
+Features ──► Domain, Styleguide, ComposableArchitecture   (never Data)
+Data ──► Domain (+ UIKit / device frameworks)
+Domain ──► swift-dependencies
+```
+
+`Features` reaches data **and device capabilities** only through a `:Domain` dependency client resolved
+with `@Dependency` — never by importing `Data` or calling UIKit directly. There is no separate
+`Platform` package: a device API is read inside the client's `liveValue` in `Data`.
+
+## Presentation — TCA
+
+- Each screen is a `@Reducer` feature + a SwiftUI view: `{Feature}Feature.swift` (State/Action/body) and
+  `{Feature}View.swift` — see the `feature-tca` rule.
+- State is `@ObservableState`; one-shot navigation/effects are `Action` cases (often a nested
+  `delegate`), never booleans in State.
+- Views are driven by a `StoreOf<Feature>` and contain no business logic.
+
+## When adding code
+
+- New device capability / OS API → a `@Dependency` client (interface in `Domain`, `liveValue` in `Data`)
+- New colors, typography, reusable controls → `Styleguide`
+- New screen / flow → `Features` (+ `Domain`/`Data` if needed)
+- New live dependency value → `Data` (`DependencyKey.liveValue`)
+- Do not add comments unless the *why* is non-obvious.

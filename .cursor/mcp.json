@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "internal-jira": {
+      "command": "node",
+      "args": ["${env:INTERNAL_JIRA_MCP_PATH}/dist/server.js"],
+      "envFile": "${workspaceFolder}/.claude/.env"
+    },
+    "figma": {
+      "url": "https://mcp.figma.com/mcp"
+    },
+    "figma-desktop": {
+      "url": "http://127.0.0.1:3845/mcp"
+    },
+    "aws-mcp": {
+      "command": "uvx",
+      "args": [
+        "mcp-proxy-for-aws==1.6.2",
+        "https://aws-mcp.eu-central-1.api.aws/mcp",
+        "--metadata", "AWS_REGION=eu-central-1"
+      ],
+      "env": {
+        "AWS_MCP_PROXY_PROFILES": "conflead-readonly"
+      }
+    }
+  }
+}

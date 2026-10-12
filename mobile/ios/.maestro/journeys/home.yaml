@@ -1,0 +1,12 @@
+# Primary journey: launch → Home → open Details (type-safe stack route) → back to Home.
+# Selects by visible text; accessibilityIdentifiers are also present on key controls.
+appId: com.monorepo.ios
+---
+- launchApp:
+    clearState: true
+- assertVisible: "iOS App"
+- assertVisible: "Open details"
+- tapOn: "Open details"
+- assertVisible: "Details for ios-42"
+- tapOn: "Back"
+- assertVisible: "iOS App"

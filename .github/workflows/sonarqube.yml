@@ -1,0 +1,62 @@
+name: sonarqube
+
+# SonarQube analysis + vulnerability report. Runs on main only.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sonarqube-check:
+    runs-on: ubuntu-latest
+    container:
+      image: node:22-bookworm
+    continue-on-error: true
+    env:
+      SONAR_USER_HOME: ${{ github.workspace }}/.sonar
+      SONAR_SCANNER_VERSION: "6.2.1.4610"
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install sonar-scanner & deps
+        run: |
+          apt-get update -qq && apt-get install -y -qq unzip wget
+          SCANNER_ZIP="sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
+          wget -qO "/tmp/${SCANNER_ZIP}" \
+            "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${SCANNER_ZIP}"
+          unzip -qo "/tmp/${SCANNER_ZIP}" -d /tmp
+          mv "/tmp/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64" "${GITHUB_WORKSPACE}/.sonar-scanner-cli"
+          corepack enable && corepack prepare pnpm@9.15.0 --activate
+          (cd "${GITHUB_WORKSPACE}/frontend" && pnpm install --frozen-lockfile)
+          (cd "${GITHUB_WORKSPACE}/backend" && pnpm install --frozen-lockfile)
+      - name: Run sonar-scanner
+        run: |
+          export PATH="${GITHUB_WORKSPACE}/.sonar-scanner-cli/bin:${PATH}"
+          sonar-scanner -Dsonar.host.url="${SONAR_HOST_URL}" -Dsonar.token="${SONAR_TOKEN}"
+
+  sonarqube-vulnerability-report:
+    runs-on: ubuntu-latest
+    needs: sonarqube-check
+    continue-on-error: true
+    env:
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - name: Export SonarQube issues
+        run: |
+          curl -sf -u "${SONAR_TOKEN}:" \
+            "${SONAR_HOST_URL}/api/issues/search?projects=monorepo&branch=main&types=VULNERABILITY,SECURITY_HOTSPOT&ps=500" \
+            -o sonar-issues-report.json
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-issues-report
+          path: sonar-issues-report.json
+          retention-days: 1

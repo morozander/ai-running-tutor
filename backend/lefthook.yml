@@ -1,0 +1,44 @@
+# Lefthook configuration for git hooks
+# https://github.com/evilmartians/lefthook
+
+pre-commit:
+  parallel: true
+  commands:
+    biome-check:
+      glob: "*.{js,ts,jsx,tsx,json}"
+      run: npx biome check --write {staged_files}
+      stage_fixed: true
+    
+    typecheck:
+      glob: "*.{ts,tsx}"
+      run: npx tsc --noEmit
+
+pre-push:
+  parallel: true
+  commands:
+    test:
+      run: npm run test -- --passWithNoTests --bail
+    
+    lint:
+      run: npm run check
+
+commit-msg:
+  commands:
+    validate-message:
+      run: |
+        message=$(cat {1})
+        # Conventional commits pattern
+        pattern="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .{1,}"
+        if ! echo "$message" | grep -qE "$pattern"; then
+          echo "❌ Invalid commit message format!"
+          echo ""
+          echo "Expected format: <type>(<scope>): <description>"
+          echo ""
+          echo "Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+          echo ""
+          echo "Examples:"
+          echo "  feat(user): add registration endpoint"
+          echo "  fix(auth): resolve token validation issue"
+          echo "  docs: update README with setup instructions"
+          exit 1
+        fi

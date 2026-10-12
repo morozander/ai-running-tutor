@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "command": "./.claude/hooks/session-start.sh" },
+      { "command": "./.claude/hooks/check-runtime-ledgers.sh" }
+    ],
+    "beforeShellExecution": [
+      { "command": "./.claude/hooks/pre-tool-use.sh" }
+    ],
+    "afterShellExecution": [
+      { "command": "./.claude/hooks/post-tool-use.sh" }
+    ]
+  }
+}

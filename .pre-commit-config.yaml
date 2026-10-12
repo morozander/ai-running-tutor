@@ -1,0 +1,43 @@
+# Pre-commit hooks for HCL/Terraform formatting and security (Checkov)
+# Install: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  - repo: local
+    hooks:
+      - id: hcl-fmt
+        name: HCL fmt (terragrunt)
+        entry: bash -c 'cd "$(git rev-parse --show-toplevel)" && terragrunt hcl fmt'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: lint
+        name: Lint (backend + frontend)
+        entry: bash -c 'root="$(git rev-parse --show-toplevel)" && cd "$root/backend" && pnpm check && cd "$root/frontend" && pnpm lint'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: scan-trivy
+        name: Trivy (vuln, secret, misconfig)
+        entry: bash -c 'root="$(git rev-parse --show-toplevel)" && cd "$root" && trivy fs --severity HIGH,CRITICAL --exit-code 1 --scanners vuln,secret,misconfig --ignorefile .github/configs/.trivyignore .'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: scan-dependencies
+        name: OSV Scanner (dependencies)
+        entry: bash -c 'root="$(git rev-parse --show-toplevel)" && cd "$root" && osv-scanner scan --recursive . --config .github/configs/osv-scanner.toml'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  - repo: https://github.com/bridgecrewio/checkov
+    rev: 3.2.506
+    hooks:
+      - id: checkov
+        name: Checkov (Terraform)
+        args: ["-d", "iaac/", "--framework", "terraform"]
+        pass_filenames: false
+        files: ^iaac/

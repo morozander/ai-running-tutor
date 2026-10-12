@@ -1,0 +1,40 @@
+# SwiftLint config for the mobile/ios template. Run `swiftlint` (or `swiftlint --strict` in CI)
+# from mobile/ios/ — it lints the app target and all local packages.
+included:
+  - ios
+  - Domain
+  - Data
+  - Platform
+  - Styleguide
+  - Features
+
+excluded:
+  - "**/.build"
+  - "**/build"
+  - "**/*.generated.swift"
+  - iosTests
+  - iosUITests
+
+opt_in_rules:
+  - empty_count
+  - explicit_init
+  - first_where
+  - force_unwrapping
+  - redundant_nil_coalescing
+  - toggle_bool
+  - unused_import
+
+disabled_rules:
+  - trailing_comma # project style allows trailing commas (matches the Swift 6 / Gradle house style)
+
+line_length:
+  warning: 120
+  error: 160
+  ignores_comments: true
+
+identifier_name:
+  min_length: 2
+  excluded: [id, to]
+
+type_name:
+  max_length: 50

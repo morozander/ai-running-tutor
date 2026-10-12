@@ -1,0 +1,49 @@
+---
+name: ios-testing
+description: Swift Testing + TCA TestStore, fakes over mocks, which command to run
+globs: ["mobile/ios/**/Tests/**/*.swift"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: normal
+---
+
+# Testing
+
+Every new feature and every bug fix ships with tests. A bug fix needs a regression test that fails before the fix and passes after.
+
+## Tooling
+
+- **Swift Testing** (`@Test`, `#expect`) — not XCTest for new tests.
+- **TCA `TestStore`** for reducers — asserts every state change and received action exhaustively.
+- **No mocking framework** — override dependencies with test values (`withDependencies:`), and write plain fakes/closures.
+
+```swift
+@MainActor
+struct HomeFeatureTests {
+    @Test func loadsGreeting() async {
+        let store = TestStore(initialState: HomeFeature.State()) { HomeFeature() }
+            withDependencies: { $0.platformInfo.platformName = { "TestOS" } }
+        await store.send(.task)
+        await store.receive(\.greetingResponse) { $0.isLoading = false; $0.greeting = "Hello from TestOS!" }
+    }
+}
+```
+
+## What to test
+
+Pure domain rules (model logic); then reducer state transitions / effects via `TestStore`. Prefer
+logic tests over UI tests. Use `store.exhaustivity = .off` only for focused non-exhaustive assertions.
+
+## Commands
+
+```bash
+swift test --package-path Domain            # per-package logic (host)
+swift test --package-path Features          # TCA reducers
+# app/UI tests run in Xcode via xcodebuild test (drop -sdk, use -destination; -skipMacroValidation)
+```
+
+## Anti-patterns
+
+- ❌ Adding a mocking framework instead of dependency overrides
+- ❌ A `TestStore` assertion that isn't exhaustive without a stated reason
+- ❌ Testing through the UI what a reducer test could cover

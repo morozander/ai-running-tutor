@@ -1,0 +1,58 @@
+---
+name: branch-conventions
+description: Branch naming and GitFlow conventions
+globs: ["**/*"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: normal
+---
+
+# Branch naming conventions
+
+See [GITFLOW.md](../../../GITFLOW.md) for the full pipeline. This rule covers naming only.
+
+## Working branches
+
+Pattern: `<type>/<JIRA-KEY>-<short-kebab-name>`
+
+```
+feat/PROJ-123-stop-sequence-button
+fix/PROJ-456-token-refresh-race
+refactor/PROJ-789-extract-themed-text
+chore/PROJ-101-bump-pnpm
+docs/PROJ-202-update-setup
+```
+
+### Types match commit types
+
+`feat`, `fix`, `refactor`, `chore`, `docs`, `test`, `style`, `ci`, `perf`, `build` — same set as commit message types.
+
+### Short name
+
+- Kebab-case
+- ≤4 words
+- Describes the change, not the ticket title verbatim
+
+## Long-lived branches
+
+| Branch | Purpose |
+|---|---|
+| `main` | Trunk. Always deployable. Direct commits forbidden — use MRs. |
+| `release/vX.Y.Z` | Pre-release stabilization. Cut from `main`, deploys to staging. |
+
+## Tags
+
+Production deploys are triggered by semver tags on `release/*` branches:
+
+```
+v1.2.0       → production deploy
+v1.2.0-rc.1  → RC environment (if configured)
+```
+
+## What NOT to do
+
+- ❌ `my-feature` — no type, no ticket
+- ❌ `feature/long-descriptive-branch-name-that-explains-everything` — keep it short
+- ❌ `feat/PROJ_123_stop_sequence` — snake_case, use kebab
+- ❌ Committing to `main` directly
+- ❌ Reusing a branch name after merge — start fresh

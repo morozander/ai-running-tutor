@@ -1,0 +1,141 @@
+---
+description: Tab/stack/drawer navigation patterns via react-navigation
+globs: "mobile/expo-boilerplate/app/**/_layout.tsx,mobile/expo-boilerplate/src/**/*.tsx"
+alwaysApply: false
+---
+
+# Mobile Navigation Patterns
+
+Expo Router uses `react-navigation` under the hood. Choose the right primitive:
+
+## Stack — for forward/back drill-down
+
+```tsx
+import { Stack } from 'expo-router';
+
+<Stack
+  screenOptions={{
+    headerStyle: { backgroundColor: Colors[scheme].tint },
+    headerTintColor: '#fff',
+    animation: 'slide_from_right',
+  }}
+>
+  <Stack.Screen name="index" options={{ title: 'Home' }} />
+  <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+</Stack>
+```
+
+Use when: linear flow, back button makes sense, screens have semantic hierarchy.
+
+## Tabs — for top-level sections
+
+```tsx
+import { Tabs } from 'expo-router';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { HapticTab } from '@/components/haptic-tab';
+
+<Tabs
+  screenOptions={{
+    tabBarActiveTintColor: Colors[scheme].tint,
+    tabBarButton: HapticTab,
+    headerShown: false,
+  }}
+>
+  <Tabs.Screen
+    name="index"
+    options={{
+      title: 'Home',
+      tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+    }}
+  />
+</Tabs>
+```
+
+Use when: 2-5 peer sections users switch between freely. Never put a tab bar inside another tab bar.
+
+## Modal — for transient flows
+
+```tsx
+// app/_layout.tsx
+<Stack.Screen
+  name="modal"
+  options={{
+    presentation: 'modal',
+    gestureEnabled: true,
+    headerShown: true,
+    title: 'Create item',
+  }}
+/>
+
+// app/modal.tsx
+import { router } from 'expo-router';
+
+export default function Modal() {
+  return (
+    <View>
+      <Form onSubmit={(values) => { /* ... */; router.back(); }} />
+    </View>
+  );
+}
+```
+
+Use when: short user flow, dismiss via swipe/back, no navigation history within.
+
+## Drawer — for occasional side navigation
+
+```tsx
+import { Drawer } from 'expo-router/drawer';
+
+<Drawer>
+  <Drawer.Screen name="(tabs)" options={{ drawerLabel: 'Home' }} />
+  <Drawer.Screen name="settings" options={{ drawerLabel: 'Settings' }} />
+</Drawer>
+```
+
+Use sparingly — drawers are an iOS anti-pattern for primary navigation. Prefer tabs or stack.
+
+## Haptics on interactions
+
+Use `expo-haptics` for tab presses and key actions:
+
+```tsx
+// src/components/haptic-tab.tsx
+import * as Haptics from 'expo-haptics';
+import { Pressable } from 'react-native';
+
+export function HapticTab({ children, ...props }: PressableProps) {
+  return (
+    <Pressable
+      {...props}
+      onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+    >
+      {children}
+    </Pressable>
+  );
+}
+```
+
+## Safe areas
+
+Always respect safe areas on screens:
+
+```tsx
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const insets = useSafeAreaInsets();
+<View style={{ paddingTop: insets.top, paddingBottom: insets.bottom }} />
+```
+
+The root layout wraps everything in `<SafeAreaProvider>`. Don't re-wrap children.
+
+## Gestures
+
+Use `react-native-gesture-handler` primitives for swipes, drags, pinches. Never the deprecated `PanResponder`.
+
+## Hard rules
+
+- ❌ Drawer as the **primary** navigation (iOS anti-pattern)
+- ❌ Tab bar inside another tab bar
+- ❌ More than 5 tabs (split into a "More" section instead)
+- ❌ `PanResponder` — use `react-native-gesture-handler`
+- ❌ Hard-coded safe-area insets — use `useSafeAreaInsets`

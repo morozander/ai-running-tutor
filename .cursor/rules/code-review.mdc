@@ -1,0 +1,51 @@
+---
+description: After opening a PR, wait for the Macroscope review and read it before asking for a merge
+alwaysApply: true
+---
+
+# Code review
+
+Pull requests are reviewed by **Macroscope** as well as by people. It reads for *intent*
+rather than syntax, which makes it the one automated check that catches the class of
+mistake generated code actually makes: the change that compiles, plans and passes every
+linter while doing the wrong thing.
+
+## Opening a PR is not the end of the task
+
+The review takes a few minutes to arrive. A PR that is opened and immediately reported
+as done is a PR whose review nobody read. Wait for it, read every comment, and act on it
+before asking for a merge.
+
+```bash
+# Macroscope posts inline, as macroscopeapp[bot], on the review-comments endpoint.
+gh api "/repos/<org>/<repo>/pulls/<N>/comments" \
+  -q '.[] | select(.user.login=="macroscopeapp[bot]") | "\(.path):\(.line)\n\(.body)\n"'
+
+# Nothing above usually means it has not run yet, not that it found nothing.
+gh api "/repos/<org>/<repo>/pulls/<N>/reviews" -q '.[] | "\(.user.login) \(.state)"'
+```
+
+Poll rather than assume. A change spanning repositories gets a **separate review in
+each**, so a clean PR in one says nothing about the others.
+
+## Verify before acting
+
+It is a model. Treat each comment as a lead, not a verdict:
+
+- Check the claim against the upstream source **at the pinned version**, or against the
+  live account — not against what an argument name suggests it does.
+- Say what you found, including when the comment is wrong. That happens, and silently
+  "fixing" a non-problem is worse than the comment was.
+- A finding can be right about the mechanism and wrong about the impact. One correctly
+  identified a security setting that was never actually being created; the resource still
+  looked correct in the console, because a service default was doing the work. Real bug,
+  different urgency — only checking the account separated the two halves.
+
+## What it has caught in practice
+
+A hardcoded database password. A security setting silently disabled by a flag whose name
+suggested something else entirely. A retention policy that would have deleted existing
+artifacts the first time a module was pointed at a real project. A data-source attribute
+that does not exist.
+
+None of these fail `tsc`, a linter, `tofu validate`, or `tofu plan`. That is the point.

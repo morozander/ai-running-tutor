@@ -1,0 +1,12 @@
+# Primary journey: launch → Home → open Details (type-safe route arg) → back to Home.
+# Selects by visible text so it needs no testTagsAsResourceId opt-in; testTag ids are also present.
+appId: com.monorepo.android
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Android App"
+- assertVisible: "Open details"
+- tapOn: "Open details"
+- assertVisible: "Details for android-42"
+- tapOn: "Back"
+- assertVisible: "Android App"

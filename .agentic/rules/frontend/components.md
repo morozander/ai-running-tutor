@@ -1,0 +1,162 @@
+---
+name: frontend-components
+description: Functional components, props typing, asChild pattern, presentation/container split
+globs: ["frontend/src/**/*.tsx"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: normal
+---
+
+# Frontend Components
+
+**All components are functional.** No class components.
+
+## Props typing
+
+```tsx
+type ButtonProps = {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  asChild?: boolean;
+  children: ReactNode;
+  className?: string;
+  disabled?: boolean;
+  isLoading?: boolean;
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
+};
+
+export function Button({ variant, size, children, ...props }: ButtonProps) {
+  // ...
+}
+```
+
+See [_shared/typescript.md](../_shared/typescript.md) for `type` vs `interface` rules and property ordering.
+
+## Default vs named exports
+
+- **Named exports** for shared primitives, hooks, utilities — improves refactoring and renaming
+- **Default exports** allowed for page components when the router config requires them; otherwise prefer named
+
+## Presentational / container split
+
+- **Pages** in `src/pages/`: thin — render one feature view, no logic
+- **Feature views** in `features/<feature>/<feature>-view.tsx` or `components/`: container — call hooks, pass data down
+- **Primitives** in `shared/ui/`: purely presentational, accept `className`, forward refs if needed
+
+## Co-located logic hooks
+
+Non-trivial logic for a single component goes in `use-<component>.ts` next to the component file. The component imports its hook and destructures:
+
+```tsx
+// features/admins/components/admin-list/admin-list.tsx
+export function AdminList() {
+  const { admins, isLoading, showEmptyState, onCreate } = useAdminList();
+
+  if (isLoading) return <Loader />;
+  if (showEmptyState) return <EmptyState title="No admins yet" />;
+  return <Table data={admins} onRowAction={onCreate} />;
+}
+
+// features/admins/components/admin-list/use-admin-list.ts
+export function useAdminList() {
+  const { admins, isLoading } = useGetAdmins();
+  const showEmptyState = !isLoading && admins.length === 0;
+  const onCreate = useCallback(() => { /* ... */ }, []);
+  return { admins, isLoading, showEmptyState, onCreate };
+}
+```
+
+## `asChild` pattern
+
+Primitives that may render as a different element use Radix `<Slot>`:
+
+```tsx
+import { Slot } from '@radix-ui/react-slot';
+
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  asChild?: boolean;
+} & ButtonVariants;
+
+export function Button({ asChild, className, ...props }: ButtonProps) {
+  const Comp = asChild ? Slot : 'button';
+  return <Comp className={cn(buttonVariants({ ...props }), className)} {...props} />;
+}
+
+// Usage
+<Button asChild>
+  <Link to={ROUTES.DASHBOARD}>Go to dashboard</Link>
+</Button>
+```
+
+## Composition over `React.memo`
+
+Don't reach for `React.memo`, `useMemo`, or `useCallback` speculatively. Apply only when:
+
+- Profiler shows a measurable re-render bottleneck
+- A function is in a `useEffect` dependency array and needs a stable identity
+- A function is passed to a memoized child
+
+Keep components small instead. Re-renders of a tiny component are cheaper than the memoization overhead.
+
+Scope note: this is about speculative **performance** memoization. `useMemo` to derive a value from props/state ([state.md](./state.md)'s derived-state pattern) is correctness, not perf — it needs no profiler justification.
+
+## Static data at module scope
+
+```tsx
+// ❌ — recreated on every render
+function StatusBadge({ status }: { status: AdminStatus }) {
+  const LABELS = { ACTIVE: 'Active', INACTIVE: 'Inactive' };
+  return <span>{LABELS[status]}</span>;
+}
+
+// ✅
+const STATUS_LABELS: Record<AdminStatus, string> = {
+  ACTIVE: 'Active',
+  INACTIVE: 'Inactive',
+  PENDING: 'Pending',
+};
+
+function StatusBadge({ status }: { status: AdminStatus }) {
+  return <span>{STATUS_LABELS[status]}</span>;
+}
+```
+
+## Accessibility (web)
+
+Mirrors the mobile a11y bar (see `mobile/components.md`) — the web side owes the same discipline:
+
+- **WHEN composing Radix/shadcn primitives** → semantics, focus trapping, and keyboard handling are inherited; your job is labels — every icon-only button gets `aria-label`, every input a visible associated label.
+- **WHEN building a custom interactive element from divs** → you owe `role`, `tabIndex`, keyboard handling (Enter/Space), and focus management yourself. The signal you've crossed that line: an `onClick` on a non-`button` element.
+- **Dialogs/popovers** → focus moves in on open, returns to the trigger on close, Escape closes. Radix does this — verify you haven't broken it with `autoFocus` or portals.
+- **In tests** → RTL's role-based queries already enforce semantics; an axe pass (e.g. `vitest-axe`) on shared primitives is the cheap regression net — add it when a primitive grows interactive behavior, not as a blanket mandate.
+
+## Semantic markup
+
+- One `h1` per page; heading levels never skip (`h2` → `h4` is a finding)
+- Interactive means `button` or `a` — an `onClick` on a `div`/`span` crosses into the custom-element contract above (role, tabIndex, keyboard)
+- Repeating items are `ul`/`ol` + `li`, not stacked `div`s
+- Fragments (`<>`) over wrapper `div`s that exist only to satisfy JSX
+- Never `<br>` for spacing — spacing is the parent's layout job (gap/margin)
+- Falsy-zero gotcha: `{count && <Badge />}` renders a literal `0` when `count` is `0` — use a ternary (`count > 0 ? <Badge /> : null`) whenever the condition can be a falsy non-boolean
+
+## Lint suppressions
+
+WHEN the same suppression repeats across a folder because the exception is structural (e.g. index keys in static skeleton placeholders) → encode it once as a path-scoped override in `biome.json` (`overrides` + `includes` glob), not N inline ignores. Inline `biome-ignore` is for one-offs and must name the rule AND a one-line reason why the code is correct despite it — a suppression whose comment doesn't explain that is a review finding.
+
+## Variable naming
+
+- Use full names — `button` not `btn`, `navigation` not `nav`
+- Avoid generic names — `data`, `result`, `response`, `value`, `res`, `info`, `temp` — use descriptive names
+- Boolean variables / props: prefix with `is`, `has`, `should`, `can` (`isLoading`, `hasError`, `shouldRedirect`, `canEdit`)
+
+## Hard rules
+
+- ❌ Class components
+- ❌ More than one component per file
+- ❌ Constants defined inside component bodies
+- ❌ Generic names: `data`, `result`, `response`, `value`, `res`, `info`, `temp`
+- ❌ Shorthand names: `btn`, `nav`, `prev`, `curr`, `temp`
+- ❌ `React.memo` / `useCallback` **for performance** without a measured reason — `useMemo` for derived-value correctness is the normal pattern, not memoization (see [state.md](./state.md))
+- ❌ `useRef` as a state substitute when the UI must update — refs ARE right for DOM nodes and mutable non-render values (timers, previous values, latest-callback); wrong only for anything that should trigger a re-render
+- ❌ Switch statements or chained ternaries in JSX — use object mapping
+- ❌ Block comments or JSDoc in component code — improve the code instead

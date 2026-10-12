@@ -1,0 +1,35 @@
+---
+name: ios-domain-module
+description: Domain package — pure models (with their rules) and dependency-client interfaces
+globs: ["mobile/ios/Domain/**/*.swift"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: high
+---
+
+# `Domain` package
+
+The base layer — pure Swift, no UIKit/SwiftUI, no TCA, no live implementations. It may depend only on
+`swift-dependencies` (to declare dependency-client interfaces) and the standard library / Foundation.
+
+## Owns
+
+- **Models** — value types (`struct`/`enum`), `Equatable`/`Sendable`.
+- **Dependency clients** — the repository analog: a `struct` of closures + its `DependencyValues`
+  accessor + `TestDependencyKey` (`testValue`). The `liveValue` lives in `Data` (see `dependencies`).
+- **Domain rules** — on the model itself (initializers, computed properties) or free functions, e.g.
+  `Greeting(platformName:)`. **No "use case" layer** — TCA reducers compose clients + domain directly.
+- **`Resource<T>`** — the load-state wrapper (`loading` / `success` / `failure`).
+
+## Practices
+
+- Put a rule where it belongs to the data: a model initializer/method or a small free function — not a
+  dedicated `*UseCase` type (not a TCA idiom).
+- No dispatcher/threading decisions here — async is expressed with `async`/`AsyncStream`; the caller owns the context.
+- Keep everything `Sendable`.
+
+## Anti-patterns
+
+- ❌ Importing UIKit/SwiftUI, TCA, or a networking/persistence library
+- ❌ Defining a `liveValue` (that belongs in `Data`)
+- ❌ Introducing a `*UseCase` type — the reducer calls the dependency client and the domain rule directly

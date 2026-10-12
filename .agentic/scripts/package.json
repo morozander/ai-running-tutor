@@ -1,0 +1,19 @@
+{
+  "name": "@agentic/scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "tsx sync.ts",
+    "sync:check": "tsx sync.ts --check",
+    "rules:check": "tsx rules-check.ts"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  }
+}

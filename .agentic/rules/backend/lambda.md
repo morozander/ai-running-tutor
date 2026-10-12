@@ -1,0 +1,129 @@
+---
+name: backend-lambda
+description: Lambda optimization — cold starts, lazy imports, connection pooling
+globs: ["backend/src/lambda.ts", "backend/src/core/**/*.ts", "backend/src/**/*.config.ts"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: high
+---
+
+# Lambda Optimization
+
+## Cold-start strategies
+
+### 1. Lazy imports for heavy dependencies
+
+```ts
+// ❌ Always loaded
+import { BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
+
+// ✅ Loaded on demand
+async invokeModel() {
+  const { BedrockRuntimeClient } = await import('@aws-sdk/client-bedrock-runtime');
+  // ...
+}
+```
+
+Rule of thumb: lazy-import any AWS SDK client used by only one feature, plus any package > 200KB.
+
+### 2. Minimal connection pool
+
+```ts
+// mikro-orm.config.ts
+pool: {
+  min: 0,   // no idle connections
+  max: 10,  // scale as needed
+}
+```
+
+### 3. No fire-and-forget work on Lambda
+
+```ts
+// ❌ Async event — may not complete before the Lambda freezes after responding
+this.eventEmitter.emit('user.created', user);
+
+// ✅ Await the work before returning — direct service call (or command bus, if CQRS is in use)
+await this.welcomeEmailService.send(user.id);
+```
+
+The signal: anything not awaited before the handler returns may never run — the container freezes between invocations.
+
+### 4. Cache configuration
+
+```ts
+ConfigModule.forRoot({
+  cache: true,
+});
+```
+
+### 5. Don't enable subscriptions
+
+GraphQL subscriptions are **opt-in** in `@nestjs/graphql` — you enable them by adding a `subscriptions` config object; omitting it keeps them off. `subscriptions: false` is not a valid option (the real `graphql.module.ts` has that line commented out for exactly this reason). On Lambda, simply don't add a `subscriptions` config — the runtime can't hold long-lived connections.
+
+## Lambda handler
+
+The real entry point (`backend/src/lambda.ts`), abbreviated:
+
+```ts
+// backend/src/lambda.ts
+import serverlessExpress from '@codegenie/serverless-express';
+import { type AppConfig, APP_CONFIG_KEY } from '@config/app.config';
+import { otelSDK } from '@core/telemetry/tracing';
+import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { NestFactory } from '@nestjs/core';
+import { ExpressAdapter } from '@nestjs/platform-express';
+import { buildCorsOptions } from '@shared/http/cors-options';
+import type { Handler } from 'aws-lambda';
+import express from 'express';
+import { AppModule } from './app.module';
+
+let cachedServer: Handler;
+
+async function bootstrap(): Promise<Handler> {
+  if (!cachedServer) {
+    if (otelSDK) await otelSDK.start(); // before NestFactory — see opentelemetry.md
+
+    const expressApp = express();
+    const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), {
+      logger: ['error', 'warn', 'log'], // reduce logging for Lambda
+    });
+
+    // Same global ValidationPipe as main.ts — whitelist + forbidNonWhitelisted (see graphql.md inputs)
+    app.useGlobalPipes(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transformOptions: { enableImplicitConversion: true },
+      }),
+    );
+
+    // CORS from env config — explicit origin allowlist via the shared helper;
+    // credentials are enabled only alongside explicit origins, never with a '*' fallback.
+    const appConfig = app.get(ConfigService).get<AppConfig>(APP_CONFIG_KEY);
+    app.enableCors(buildCorsOptions(appConfig?.corsOrigin));
+
+    await app.init();
+    cachedServer = serverlessExpress({ app: expressApp });
+  }
+  return cachedServer;
+}
+
+export const handler: Handler = async (event, context, callback) => {
+  context.callbackWaitsForEmptyEventLoop = false; // don't wait for the pool's open sockets
+  const server = await bootstrap();
+  return server(event, context, callback);
+};
+```
+
+The `cachedServer` variable is module-scoped — it persists across invocations on a warm container.
+
+CORS heuristic: `origin: '*'` combined with `credentials: true` is a fail-open default that browsers reject anyway. WHEN browser clients send credentials → set an explicit origin allowlist per environment (env-driven, e.g. `CORS_ORIGIN`); WHEN no allowlist is configured → wildcard is acceptable only WITHOUT credentials (local dev/curl). e.g. (THIS repo): `src/shared/http/cors-options.ts` (`buildCorsOptions`) encodes exactly this and is shared by `main.ts` and `lambda.ts`.
+
+## Anti-patterns
+
+- ❌ Top-level `await` for slow operations (delays every cold start)
+- ❌ Loading all AWS SDK clients eagerly
+- ❌ `connection.min > 0` — keeps the connection open, costs idle resources
+- ❌ Eager initialization of OpenTelemetry exporters not used at runtime

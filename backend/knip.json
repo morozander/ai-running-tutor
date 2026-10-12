@@ -1,0 +1,44 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/main.ts",
+    "src/lambda.ts",
+    "src/crons/cron.ts",
+    "src/crons/**/*.ts",
+    "src/queue-workers/**/*.ts",
+    "mikro-orm.config.ts",
+    "src/core/database/migrations/**/*.ts",
+    "src/core/database/seeders/**/*.ts",
+    "test/**/*.ts"
+  ],
+  "project": ["src/**/*.ts", "test/**/*.ts", "mikro-orm.config.ts", "scripts/**/*.ts"],
+  "ignore": [
+    "cognito-triggers/**",
+    "src/config/app.config.ts",
+    "src/config/aws.config.ts",
+    "src/config/sqs.config.ts",
+    "src/core/exceptions/domain.exceptions.ts",
+    "src/modules/domain/user/queries/get-user.query.ts",
+    "src/core/auth/cognito/cognito.service.ts",
+    "src/core/aws/s3/s3.service.ts",
+    "src/core/aws/sqs/sqs.types.ts",
+    "src/core/sendgrid/service/sendgrid.service.ts",
+    "src/core/sendgrid/template/sendgrid.email-template.ts",
+    "src/core/exceptions/graphql-exception.filter.ts"
+  ],
+  "ignoreDependencies": [
+    "@as-integrations/express5",
+    "@aws-sdk/client-bedrock-runtime",
+    "@codegenie/serverless-express",
+    "@mikro-orm/migrations",
+    "@mikro-orm/seeder",
+    "@types/aws-lambda",
+    "@types/express",
+    "@types/multer",
+    "@types/supertest",
+    "aws-lambda",
+    "express",
+    "source-map-support",
+    "supertest"
+  ]
+}

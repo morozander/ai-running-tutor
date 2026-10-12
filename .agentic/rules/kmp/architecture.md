@@ -1,0 +1,51 @@
+---
+name: kmp-architecture
+description: KMP module boundaries and Clean Architecture + MVI for the mobile/kmp template
+globs: ["mobile/kmp/**/*.kt", "mobile/kmp/**/*.gradle.kts"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: high
+---
+
+# Module architecture
+
+Compose Multiplatform app targeting Android and iOS. Gradle build rooted at `mobile/kmp/` — **no `package.json`, no pnpm, no Metro**. Package root `com.monorepo.kmp`. Clean Architecture + MVI, already scaffolded in `:features`.
+
+Left column = what the module **owns**. Right column = what it **must not** contain (those belong elsewhere).
+
+| Module | Owns | Must not own |
+|--------|------|--------------|
+| `:androidApp` / `iosApp` | Thin hosts — entry point, manifest/`Info.plist`, permissions; start Koin | Business logic, theme, screens, Platform SDKs |
+| `:composeApp` | Koin composition (`di/`), app wiring, platform `actual`s for infra, the iOS `ComposeApp` framework | Business rules, screen UI, design tokens |
+| `:features` | Screens, feature MVI (Contract/Screen/ViewModel), the `mvi` base, navigation wiring | Platform SDKs / OS capabilities, design tokens, shared theme (use `:styleguide`), direct data access |
+| `:domain` | Use cases, domain models, repository interfaces, the `Resource<T>` / `ErrorType` result wrapper. The base layer | UI, Koin, Ktor, Room, Android/iOS SDKs |
+| `:data` | Repository impls, remote/local data sources, DTOs, mappers | UI, Koin, Platform SDKs / OS capabilities |
+| `:platform` | Platform APIs / OS capabilities (Bluetooth, Location, Camera, Push, permissions, sensors) via `expect`/`actual` or wrappers | UI, theme, feature screens |
+| `:styleguide` | App theme (`AppTheme`), design tokens, reusable UI components | Feature screens (use `:features`), Platform SDKs / device APIs (use `:platform`) |
+
+## Dependency direction
+
+```
+androidApp / iosApp ──► composeApp, features
+composeApp ──► domain, data, platform, styleguide, features   (composes Koin; produces the iOS framework)
+features ──► domain, styleguide, platform (as needed)          (never data)
+data ──► domain, platform
+platform ──► domain
+```
+
+`:domain` is the base layer — pure Kotlin, no module dependencies. **`:features` MUST NOT call Android/iOS SDKs directly** — go through `:platform`. A repository reaches the UI only through a `:domain` interface bound in `composeApp/.../di/AppModule.kt`; adding `implementation(project(":data"))` to `:features` defeats the layering.
+
+## Presentation
+
+- Use the `com.monorepo.kmp.features.mvi` base (`MviViewModel`, `MviIntent` / `MviState` / `MviEffect`).
+- Each feature package: `{Feature}Contract.kt` (State + Intent + Effect), `{Feature}Screen.kt`, `{Feature}ViewModel.kt` — see the `feature-mvi` rule.
+- Keep Composables free of business logic; ViewModels own state updates.
+- Follow official Google (Android / Compose) and Apple (iOS / Human Interface) guidance — see `platform-best-practices`.
+
+## When adding code
+
+- New OS capability / Platform API / hardware sensor → `:platform`
+- New colors, typography, buttons, shared controls → `:styleguide`
+- New user-facing flow → `:features` (+ `:domain` / `:data` if needed)
+- New DI binding → `:composeApp/.../di/`
+- Do not add comments to methods, classes, or inline code unless it is absolutely necessary.

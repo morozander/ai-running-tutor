@@ -1,0 +1,49 @@
+---
+name: ios-dependencies
+description: Dependency injection via swift-dependencies (@Dependency) with an interface/live split
+globs: ["mobile/ios/**/*.swift"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: normal
+---
+
+# Dependency Injection (swift-dependencies / @Dependency)
+
+TCA's `@Dependency` is the app's DI mechanism. There is **no separate DI container** — dependencies are registered through
+`DependencyValues` and resolved by key path.
+
+## Interface / live split
+
+- **`Domain`** declares the dependency *client* (a `struct` of closures — the repository analog), its
+  `DependencyValues` accessor, and `TestDependencyKey` (the `testValue`).
+- **`Data`** adds `DependencyKey` (the `liveValue`) in an `extension`, wiring in device APIs / remote
+  sources. Use `@retroactive` on the conformance.
+- The **app** links `Data` so the `liveValue` is registered at runtime; nothing else imports `Data`.
+
+```swift
+// Domain
+public struct PlatformInfoClient: Sendable { public var platformName: @Sendable () async -> String }
+extension PlatformInfoClient: TestDependencyKey {
+    public static let testValue = PlatformInfoClient(platformName: { "TestOS" })
+}
+public extension DependencyValues {
+    var platformInfo: PlatformInfoClient { get { self[PlatformInfoClient.self] } set { self[PlatformInfoClient.self] = newValue } }
+}
+
+// Data
+extension PlatformInfoClient: @retroactive DependencyKey {
+    public static let liveValue = PlatformInfoClient(platformName: { await MainActor.run { "iOS \(UIDevice.current.systemVersion)" } })
+}
+```
+
+## Usage
+
+- In reducers: `@Dependency(\.platformInfo) private var platformInfo`, then call it inside `.run { }`.
+- In tests: override on the `TestStore` — `withDependencies: { $0.platformInfo.platformName = { "TestOS" } }`.
+
+## Anti-patterns
+
+- ❌ A hand-rolled singleton/service-locator or a global container
+- ❌ Defining `liveValue` in `Domain` (it would drag device/infra code into the base layer)
+- ❌ A reducer constructing its own live dependency instead of using `@Dependency`
+- ❌ Importing `Data` anywhere but the app target

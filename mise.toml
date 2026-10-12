@@ -1,0 +1,181 @@
+# mise configuration
+# https://mise.jdx.dev/
+#
+# mise is a polyglot runtime manager (like nvm, pyenv, rbenv combined)
+# It manages Node.js versions, environment variables, and tasks.
+#
+# Installation:
+#   curl https://mise.run | sh
+#   # or
+#   brew install mise
+#
+# Usage:
+#   mise install        # Install tools defined here
+#   mise trust          # Trust this config file (first time only)
+#   mise run <task>     # Run a task
+#   mise ls             # List installed tools
+#
+# The tools are automatically activated when you cd into this directory.
+
+# Minimum mise version required
+min_version = "2024.9.5"
+
+#──────────────────────────────────────────────────────────────────────────────
+# TOOLS - Runtime versions
+#──────────────────────────────────────────────────────────────────────────────
+[tools]
+# Node.js version - uses .nvmrc as fallback if not specified
+# Options: "lts", "22", "22.1.0", or "{{ env['NODE_VERSION'] | default(value='lts') }}"
+node = "22.22.0"
+pnpm = "9.15.0"
+jq = "latest"                                # required by the Claude Code hooks (session/pre/post-tool-use)
+direnv = "latest"                            # loads .claude/.env into the shell for .mcp.json env interpolation
+"npm:typescript" = "latest"                  # peer for the language server
+"npm:typescript-language-server" = "latest"  # backs the `typescript-lsp` code-intelligence plugin
+"npm:playwright" = "latest"                  # browser CLI for runtime-smoke screenshots + design-parity comparison
+# IaC toolchain — pinned so build-check's `mise exec -- terragrunt validate/plan -lock=false`
+# resolves on a clean machine (same toolchain-pinning failure class as the mobile expo root cause).
+# terraform matches the CI image alpine/terragrunt:tf1.14.5 (.gitlab/ci/iaac.gitlab-ci.yml).
+terraform = "1.14.5"
+terragrunt = "0.99.2"
+aws-cli = "2"                                # sts get-caller-identity probe before IaC plans (.agentic/rules/iaac/aws-credentials.md)
+
+
+# pnpm is pinned above and activated via corepack (enabled in [hooks] below)
+
+#──────────────────────────────────────────────────────────────────────────────
+# ENVIRONMENT VARIABLES
+#──────────────────────────────────────────────────────────────────────────────
+[env]
+# Add node_modules/.bin to PATH so you can run npm binaries without npx
+# e.g., `jest` instead of `npx jest`
+_.path = ["{{config_root}}/node_modules/.bin"]
+
+# Project metadata (available in scripts)
+PROJECT_NAME = "{{ config_root | basename }}"
+
+# Default NODE_ENV if not set
+NODE_ENV = "{{ env.NODE_ENV | default(value='development') }}"
+
+G_APPLICATION_ID = "{{ env.G_APPLICATION_ID | default(value='g-monorepo') }}"
+G_AWS_PROFILE_SHARED = "{{ env.G_AWS_PROFILE_SHARED | default(value='g-monorepo') }}"
+G_AWS_REGION_DEFAULT = "{{ env.G_AWS_REGION_DEFAULT | default(value='eu-central-1') }}"
+
+AWS_PROFILE = "{{ env.G_AWS_PROFILE_SHARED | default(value='g-monorepo') }}"
+TF_PLUGIN_CACHE_DIR = "{{env.HOME}}/.terraform.d/plugin-cache"
+
+
+#──────────────────────────────────────────────────────────────────────────────
+# HOOKS - Run automatically on certain events
+#──────────────────────────────────────────────────────────────────────────────
+[hooks]
+# Enable corepack after tools install so the pinned pnpm (9.15.0) activates
+# instead of whatever pnpm is on PATH. This is the guardrail that prevents the
+# pnpm-10 mis-install which broke the mobile Metro bundle in earlier test runs.
+postinstall = "corepack enable"
+
+#──────────────────────────────────────────────────────────────────────────────
+# TASKS - Custom commands (run with `mise run <task>` or `mise r <task>`)
+#──────────────────────────────────────────────────────────────────────────────
+
+[tasks.install]
+alias = "i"
+description = "Install dependencies"
+run = "pnpm install"
+
+[tasks.bootstrap]
+description = "One-command turnkey onboarding: pinned toolchain + per-app deps + .agentic + Claude wiring"
+run = [
+  "corepack enable",
+  "pnpm -C backend install",
+  "pnpm -C frontend install",
+  "pnpm -C mobile/expo-boilerplate install",
+  "pnpm -C .agentic/scripts install",
+  "mise exec -- playwright install chromium",
+  "bash scripts/setup-claude.sh",
+]
+
+[tasks.cognito-up]
+description = "Start local Cognito (cognito-local) fresh from the committed seed (pool + client + test user test@conflead.local/Test1234!)"
+run = [
+  "docker compose rm -sf cognito-local",
+  "rm -rf cognito-local/.cognito-data && mkdir -p cognito-local/.cognito-data",
+  "cp -r cognito-local/seed/db cognito-local/.cognito-data/db",
+  "docker compose up -d cognito-local",
+]
+
+[tasks.dev]
+alias = "d"
+description = "Start development server"
+run = "pnpm run start:dev"
+
+[tasks.build]
+alias = "b"
+description = "Build for production"
+run = "pnpm run build"
+
+[tasks.test]
+alias = "t"
+description = "Run tests"
+run = "pnpm run test"
+
+[tasks.test-watch]
+alias = "tw"
+description = "Run tests in watch mode"
+run = "pnpm run test:watch"
+
+[tasks.lint]
+alias = "l"
+description = "Run linter"
+run = "pnpm run check"
+
+[tasks.lint-fix]
+alias = "lf"
+description = "Fix linting issues"
+run = "pnpm run check:fix"
+
+[tasks.db-mr-create]
+description = "Create a new database migration"
+run = "pnpm run db:migrate:create"
+
+[tasks.db-up]
+description = "Run database migrations"
+run = "pnpm run db:migrate:up"
+
+[tasks.db-down]
+description = "Rollback last migration"
+run = "pnpm run db:migrate:down"
+
+[tasks.db-fresh]
+description = "Fresh database (drop all & migrate)"
+run = "pnpm run db:migrate:fresh"
+
+[tasks.db-seed]
+alias = "seed"
+description = "Seed database with default data (Tags, Users, Tasks, Docs)"
+run = "pnpm run db:seed"
+
+[tasks.db-sync]
+description = "Sync DB schema with entities"
+run = "pnpm mikro-orm schema:update --run"
+
+[tasks.docker-up]
+alias = "du"
+description = "Start Docker services"
+run = "docker-compose up -d"
+
+[tasks.docker-down]
+alias = "dd"
+description = "Stop Docker services"
+run = "docker-compose down"
+
+[tasks.create-domain]
+description = "Generate a new domain module"
+run = "pnpm run create:domain"
+
+#──────────────────────────────────────────────────────────────────────────────
+# SETTINGS
+#──────────────────────────────────────────────────────────────────────────────
+[settings]
+# Enable experimental features (required for hooks)
+experimental = true

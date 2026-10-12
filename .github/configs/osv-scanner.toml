@@ -1,0 +1,9 @@
+# Unfixable / accepted risks — no patch available or EOL package
+[[IgnoredVulns]]
+id = "GHSA-j965-2qgj-vjmq"
+reason = "aws-sdk v2 EOL, no fix; migrate to @aws-sdk/* v3"
+
+[[IgnoredVulns]]
+id = "GHSA-848j-6mx2-7j84"
+reason = "elliptic transitive dep, no patch available"
+

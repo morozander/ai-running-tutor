@@ -1,0 +1,108 @@
+services:
+  db:
+    image: postgres:17.7
+    env_file: ./backend/.env.example
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  db-test:
+    image: postgres:17.7
+    env_file: ./backend/.env.example
+    ports:
+      - 5433:5432
+    networks:
+      - app_network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  valkey:
+    image: valkey/valkey:9.0.2
+    ports:
+      - 6379:6379
+    networks:
+      - app_network
+    healthcheck:
+      test: ['CMD', 'valkey-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      platforms:
+        - linux/amd64
+      args:
+        BASE_IMAGE: node:22-alpine
+    platform: linux/amd64
+    ports:
+      - 3001:3001
+    networks:
+      - app_network
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+    command: sh -c "pnpm run start:dev"
+    env_file: ./backend/.env.example
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "require(\"net\").createConnection(3001,\"localhost\").on(\"connect\",()=>process.exit(0)).on(\"error\",()=>process.exit(1))"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      db:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
+  frontend:
+    image: node:22.22.0-alpine3.23
+    platform: linux/amd64
+    ports:
+      - 3000:3000
+    networks:
+      - app_network
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install && pnpm codegen && pnpm dev --host"
+    env_file: ./frontend/.env.example
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  cognito-local:
+    # Local AWS Cognito emulator (jagregory/cognito-local) for testing email/password
+    # sign-in/sign-up without real AWS. Seeded pool + client + test user are copied from
+    # cognito-local/seed/ into the gitignored cognito-local/.cognito-data/ by `mise run cognito-up`.
+    # NOTE: Google federation can't be emulated here — Google OAuth stays UI-only locally.
+    # Seeded test user: test@conflead.local / Test1234!
+    image: jagregory/cognito-local:latest
+    ports:
+      - 9229:9229
+    volumes:
+      - ./cognito-local/.cognito-data:/app/.cognito
+    networks:
+      - app_network
+
+volumes:
+  postgres_data:
+  backend_node_modules:
+  frontend_node_modules:
+
+networks:
+  app_network:
+    driver: bridge

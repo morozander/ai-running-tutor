@@ -1,0 +1,17 @@
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  '''pnpm-lock\.yaml''',
+  '''package-lock\.json''',
+]
+
+commits = [
+  "d226d8f89e70203457847184fd6a28074d64356d"
+]
+
+# AWS Secrets Manager ARNs in Terragrunt (e.g. mock_outputs) — not real secrets
+regexes = [
+  '''arn:aws:secretsmanager:[^:]+:\d+:secret:[^\s"']+''',
+]

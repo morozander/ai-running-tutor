@@ -1,0 +1,10 @@
+# Xcode / SwiftPM
+.DS_Store
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.swiftpm/
+.build/
+Package.resolved
+*.xcresult

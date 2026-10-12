@@ -1,0 +1,252 @@
+---
+name: frontend-ux
+description: Loading, empty, and error state patterns — Loader, Skeleton, EmptyState, toast
+globs: ["frontend/src/**/*.tsx"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: normal
+---
+
+# Frontend UX Patterns
+
+## Loading states
+
+Three primitives, used at different scales:
+
+| Primitive | Use case |
+|---|---|
+| `<Loader />` | Full-section or full-page loading |
+| `<Spinner />` | Inline (inside buttons, beside content) |
+| `<Skeleton />` | Content-shaped placeholder during data load |
+
+### Loader
+
+```tsx
+// shared/ui/loader/loader.tsx
+export function Loader() {
+  return (
+    <div className="flex h-full w-full items-center justify-center p-8">
+      <Loader2 className="size-10 animate-spin text-primary" aria-label="Loading" role="status" />
+    </div>
+  );
+}
+```
+
+Use when an entire route or section is loading and no skeleton fits.
+
+### Spinner (inline)
+
+```tsx
+// shared/ui/spinner/spinner.tsx
+export function Spinner({ className }: { className?: string }) {
+  return (
+    <Loader2
+      role="status"
+      aria-label="Loading"
+      className={cn('size-4 animate-spin', className)}
+    />
+  );
+}
+```
+
+Built into `<Button isLoading>`:
+
+```tsx
+<Button isLoading={isPending}>Save</Button>
+```
+
+### Skeleton
+
+```tsx
+// shared/ui/skeleton/skeleton.tsx
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse rounded-medium bg-bg-surface', className)} />;
+}
+
+// Composition for list/card skeletons
+export function ListSkeleton({ count = 5 }: { count?: number }) {
+  return (
+    <div className="flex flex-col gap-2">
+      {Array.from({ length: count }).map((_, i) => (
+        <Skeleton key={i} className="h-20 w-full" />
+      ))}
+    </div>
+  );
+}
+```
+
+Use skeletons when you can predict layout (lists, cards, table rows). Skip for arbitrary content.
+
+## Empty states
+
+Composable primitive:
+
+```tsx
+// shared/ui/empty-state/empty-state.tsx
+type EmptyStateProps = {
+  icon?: ReactNode;
+  title: string;
+  description?: string;
+  action?: ReactNode;
+};
+
+export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-12">
+      {icon && <div className="text-text-description">{icon}</div>}
+      <h3 className="text-base font-semibold">{title}</h3>
+      {description && <p className="text-sm text-text-description">{description}</p>}
+      {action}
+    </div>
+  );
+}
+```
+
+**Empty ≠ errored — never render the empty state on a FAILED fetch.** The single most common fail-open bug: a list shows "No items yet" when its query actually *errored*, so during an outage the user believes their data is gone. A data surface has FOUR outcomes, not two — gate the empty state on a *successful* fetch, and give the error its own branch:
+
+```tsx
+if (loading) return <Loader />;
+if (error)   return <ErrorState onRetry={refetch} />;   // distinct from empty — never fall through to it
+if (items.length === 0) return <EmptyState ... />;       // only reached when the fetch SUCCEEDED with zero rows
+```
+
+A bare `items.length === 0` check (where `items` defaults to `[]` on error) is the violation signal — it collapses "couldn't load" into "nothing here." runtime-smoke probes this by faulting the fetch and reloading.
+
+Use distinct empty states for:
+
+1. **No items yet** (fresh account) — friendly, includes a CTA to create the first item
+2. **No items match filter** — short message, suggests clearing filters
+3. **Permissions** — explains the user lacks access
+
+```tsx
+{!isLoading && !hasFilters && items.length === 0 && (
+  <EmptyState
+    icon={<UsersIcon />}
+    title="No admins yet"
+    description="Get started by inviting your first admin."
+    action={<Button onClick={openCreateDialog}>Invite admin</Button>}
+  />
+)}
+
+{!isLoading && hasFilters && items.length === 0 && (
+  <EmptyState title="No admins match your filters" description="Try clearing search or filters." />
+)}
+```
+
+WHEN the repo gains a shared list/table primitive → it owns the four render states (loading skeleton, empty-initial with CTA, empty-no-results with clear-filters, error with retry) as PROPS with per-callsite copy overrides — (THIS repo) has no shared DataTable today, so until one exists each list page owns the four states explicitly via the conditional chains above. The violation signal either way: the same `{!isLoading && !hasFilters && ...}` branching copy-pasted across list pages — that's the moment to extract the shared primitive and push the states into it.
+
+## Error UX
+
+Three layers:
+
+1. **Inline form errors** — `FormMessage` / `helperText` from RHF (see [forms.md](./forms.md))
+2. **Mutation errors** — `toast.error()` from `sonner` in the `onError` callback
+3. **Uncaught render errors** — `<ErrorBoundary>` with a recovery page (use `react-error-boundary`)
+
+### Toasts
+
+```tsx
+import { toast } from 'sonner';
+
+await createAdmin({ variables: { input } })
+  .then(() => toast.success('Admin created'))
+  .catch(() => toast.error('Could not create admin'));
+```
+
+Mount `<Toaster />` once at the app root:
+
+```tsx
+// app/providers.tsx
+import { Toaster } from 'sonner';
+<Toaster position="bottom-right" richColors />
+```
+
+### Centralized error surface — default on, explicit opt-out
+
+WHEN 3+ mutations carry the same `toast.error(getErrorMessage(...))` body → that default belongs in the client, not in every callsite. An `ErrorLink` in the chain (see [data.md](./data.md)) toasts the sanitized message for any operation that hasn't claimed its own error UX; an operation that owns a custom UX opts out via operation context:
+
+```ts
+useMutation(CREATE_ADMIN, {
+  context: { skipGlobalErrorToast: true }, // this mutation renders its own error state
+});
+// ErrorLink side: if (operation.getContext().skipGlobalErrorToast) return; // stay silent
+```
+
+Default is safe (every error surfaces something), customization is explicit and greppable. Keep per-mutation `onError`/`catch` only for genuinely custom UX — field-level `setError`, inline retry.
+
+Anti-pattern: branching on full message text (`error.message === 'Case number must be unique'`) — copy edits break it silently. Match on `extensions.code` only.
+
+### Error boundary
+
+```tsx
+// components/error-boundary/error-boundary.tsx
+import { ErrorBoundary as ReactErrorBoundary } from 'react-error-boundary';
+
+export function ErrorBoundary({ children }: { children: ReactNode }) {
+  return (
+    <ReactErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onReset={() => window.location.reload()}
+    >
+      {children}
+    </ReactErrorBoundary>
+  );
+}
+```
+
+WHEN the project has an error-monitoring DSN provisioned (Sentry or equivalent) → the boundary must report what it catches (`onError` → `captureException`); init is env-driven, so no DSN configured = silent no-op — the correct prod-posture default. (THIS repo) has no monitoring today; provisioning it is an owner decision — the reporting hook in the boundary is the part this rule owns.
+
+Auto-reload on chunk-load failures (common after deploys): Vite signals a failed dynamic-import preload via the `vite:preloadError` window event — register a handler once at app bootstrap:
+
+```ts
+// app/app.tsx (bootstrap)
+window.addEventListener('vite:preloadError', () => {
+  window.location.reload();
+});
+```
+
+(`error.name === 'ChunkLoadError'` is a webpack error name — it never fires under Vite, so checking it in the fallback is dead code.)
+
+## Optimistic vs pessimistic mutations
+
+The signal: *can you cheaply render the guaranteed end state?*
+
+- **WHEN the interaction should feel instant and the server state is trivially reversible** (toggle, like, reorder, rename) → `optimisticResponse` + cache update; roll back on error with a toast.
+- **WHEN the mutation is destructive, server-validated, or touches multiple entities** (delete, payment, role change, anything whose result you can't predict locally) → stay pessimistic: `isLoading` on the trigger, update on response.
+
+## Web copy & i18n — a decision is pending, surface it
+
+(THIS repo) web has **no i18n configured** while mobile mandates `t()` for every string (see `mobile/i18n.md`). This asymmetry is a PRODUCT decision not yet made — not an oversight to "fix" unprompted. WHEN the product needs multilingual web → adopt the mobile i18n discipline wholesale; until then English literals on web are acceptable. Surface, don't assume.
+
+## Rule: never show raw error messages
+
+Always sanitize:
+
+```ts
+import { CombinedGraphQLErrors } from '@apollo/client/errors';
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (!navigator.onLine) return 'You appear to be offline — check your connection.';
+  if (CombinedGraphQLErrors.is(error)) {
+    const code = error.errors[0]?.extensions?.code;
+    return code === 'VALIDATION_ERROR' ? error.message : fallback;
+  }
+  return fallback;
+}
+
+toast.error(getErrorMessage(error, 'Could not save changes'));
+```
+
+(Apollo 4 removed `ApolloError` — GraphQL errors arrive as `CombinedGraphQLErrors`; use the `.is()` guard and read `.errors`, not the old `.graphQLErrors`.)
+
+Two refinements the helper owes users:
+
+- **Network state gets its own copy** — offline (`!navigator.onLine`) and timeout are user-fixable situations; "Could not save changes" for a dead connection sends them hunting for a bug that isn't there.
+- **An unexpected response shape or client-side parse failure is OUR bug, not the user's** — log it loudly (`console.error` with the operation name), toast the generic fallback. Never surface a parser/shape error raw.
+
+## Hard rules
+
+- ❌ Never raw API error messages — sanitize first
+- ❌ Never `alert()` for user feedback — use toast
+- ❌ Never block UI on optimistic actions — use `isLoading` on the trigger
+- ❌ Skeletons that look nothing like the loaded content — feels worse than a spinner

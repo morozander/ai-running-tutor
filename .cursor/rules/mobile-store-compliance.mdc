@@ -1,0 +1,23 @@
+---
+description: App Store / Play review triggers — features that change what a store reviewer sees at submission
+globs: "mobile/expo-boilerplate/app.json,mobile/expo-boilerplate/app/**/*,mobile/expo-boilerplate/src/**/*.tsx"
+alwaysApply: false
+---
+
+# Store Compliance Triggers
+
+Store policy is part of the spec. The meta-signal: **does this feature change what a store reviewer sees at submission?** (auth, payments, user data, permissions). If yes → check current policy during PLANNING and surface prerequisites in the plan/handoff — these are portal/config work, not just code.
+
+Triggers (both stores):
+
+- **WHEN offering any third-party/social sign-in on iOS** → Sign in with Apple must be offered **with equal prominence** (Apple 4.8). This fired on a real ticket here — it's an Apple Dev portal prerequisite, not a code afterthought.
+- **WHEN accounts can be created in-app** → in-app account **deletion** becomes mandatory — Apple 5.1.1(v) and Google Play's mirror policy (Play additionally requires a web deletion link in the store listing).
+- **WHEN selling digital content/features** → in-app purchase rails are mandatory: Apple IAP (3.1.1) / Play Billing. External payment links are the classic rejection.
+- **WHEN adding a permission-gated capability** (camera, location, contacts) → the usage-description string must honestly state the use, requested at point of use — both stores reject boilerplate strings.
+
+Runtime store-channel mechanics (not reviewer-facing, but store-coupled):
+
+- **WHEN the backend can ship breaking changes faster than store review propagates updates** → ship a version gate from day one: query a min-supported-version endpoint on launch **and** on every background→active transition; below minimum shows a non-dismissable alert deep-linking to the store (guard with an `isAlertVisible` flag so repeated foreground events don't stack alerts). Both company production apps converged on this independently. With no OTA channel the gate IS the kill switch; (THIS repo) EAS Update can hotfix JS, but native/API-contract breaks still need the gate.
+- **WHEN adding a rate-this-app prompt** → throttle via persisted timestamps (only after N minutes of real usage, at most every N days) and trigger only after a success moment. The OS review APIs (`expo-store-review`, THIS repo) silently no-op once the quota is exhausted (Apple ~3 prompts/year) — unthrottled call sites burn the quota at bad moments.
+
+Guideline numbers and policies drift — treat the citations above as identifiers and verify the current policy text during planning, not as the rule itself.

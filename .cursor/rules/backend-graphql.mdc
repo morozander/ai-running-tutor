@@ -1,0 +1,143 @@
+---
+description: GraphQL code-first patterns — resolvers, DTOs, response types
+globs: "backend/src/**/*.resolver.ts,backend/src/**/*.input.ts,backend/src/**/*.dto.ts"
+alwaysApply: false
+---
+
+# GraphQL Patterns
+
+The client-facing API is GraphQL-only. **No REST controllers, no Swagger for anything your own frontend/mobile clients call.** WHEN the caller is a machine that cannot speak your GraphQL contract (identity-provider trigger, webhook callback), a narrow secured REST controller is correct — the signal is WHO calls it; see [architecture.md](./architecture.md#api-style).
+
+## Code-first approach
+
+Combine `@ObjectType()` and `@Entity()` on the same class:
+
+```ts
+@ObjectType()
+@Entity({ tableName: 'users' })
+export class User extends BaseEntity {
+  @Field()
+  @Property({ unique: true })
+  email!: string;
+
+  @Field(() => UserRole)
+  @Enum({ items: () => UserRole })
+  role: UserRole & Opt = UserRole.USER;
+
+  // Computed field (GraphQL only, not persisted)
+  @Field()
+  get fullName(): string {
+    return `${this.firstName} ${this.lastName}`.trim();
+  }
+}
+```
+
+## Input types
+
+```ts
+@InputType()
+export class RegisterUserInput {
+  @Field()
+  @IsEmail()
+  email!: string;
+
+  @Field()
+  @MinLength(8)
+  password!: string;
+
+  @Field()
+  @IsNotEmpty()
+  firstName!: string;
+
+  @Field({ nullable: true })
+  lastName?: string;
+}
+```
+
+### Two validation layers, different jobs
+
+- **class-validator on `@InputType` = transport SHAPE** — format, length, presence (`@IsEmail`, `@MinLength`).
+- **Entity invariants = BUSINESS rules** — uniqueness-bearing normalization, cross-field rules; they live in the entity factory (see [entities.md](./entities.md)).
+- Don't duplicate one as the other: shape goes on the DTO, meaning goes on the entity.
+
+**Foot-gun (THIS repo): the global `ValidationPipe` runs with `whitelist` + `forbidNonWhitelisted`** (`src/main.ts` and `src/lambda.ts`) — an input field with `@Field` but NO class-validator decorator is INVISIBLE to validation: with `forbidNonWhitelisted` the request is REJECTED ("property X should not exist"); with `whitelist` alone it would be silently stripped. Either way the field never works — every input field needs at least one validator (or `@Allow`).
+
+One validation library per layer; don't introduce a second for one DTO — e.g. (THIS repo): FE/mobile forms use RHF + Zod, the backend is class-validator-only.
+
+## Response types
+
+```ts
+@ObjectType()
+export class RegistrationResponse {
+  @Field()
+  success!: boolean;
+
+  @Field({ nullable: true })
+  message?: string;
+
+  @Field({ nullable: true })
+  userId?: string;
+
+  static success(data: Partial<RegistrationResponse>): RegistrationResponse {
+    return Object.assign(new RegistrationResponse(), { success: true, ...data });
+  }
+}
+```
+
+## Resolver pattern
+
+```ts
+@Resolver(() => User)
+export class UserResolver {
+  constructor(private readonly userService: UserService) {}
+
+  @Query(() => User)
+  @UseGuards(AuthGuard)
+  async me(@CurrentUser() user: CurrentUserPayload): Promise<User> {
+    return this.userService.findById(user.userId); // normalized payload — see auth.md
+  }
+
+  @Mutation(() => User)
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  async updateUser(@Args('input') input: UpdateUserInput): Promise<User> {
+    // ...
+  }
+}
+```
+
+## Avoid N+1 in field resolvers (required)
+
+A `@ResolveField` that queries per parent object fires one query **per row** in a list —
+the classic GraphQL N+1. Batch these with a **request-scoped DataLoader**.
+
+```typescript
+// ❌ BANNED - runs once per user in the list (N+1)
+@ResolveField(() => [Task])
+async assignedTasks(@Parent() user: User): Promise<Task[]> {
+  return this.em.find(Task, { assignee: user.id }); // one query per parent
+}
+
+// ✅ DataLoader batches all parent ids into a single `WHERE assignee_id IN (...)`
+@ResolveField(() => [Task])
+async assignedTasks(@Parent() user: User): Promise<Task[]> {
+  return this.tasksByUserLoader.load(user.id);
+}
+```
+
+- One DataLoader per relation, created **per request** (never shared across requests — it caches).
+- The batch function must issue a **single** `{ <fk>: { $in: keys } }` query and map results back to keys.
+- Alternatively, `populate` the relation in the root query when it's always requested.
+
+Full query-performance gates (pagination, projection, indexes, batching) live in
+`.cursor/rules/sql-performance.mdc`.
+
+## Rules
+
+- One file = one resolver class
+- Resolvers don't contain business logic — delegate to feature services
+- A read that needs **authorization or a computed/cross-aggregate value is NOT a dumb passthrough**: apply the guard at the resolver (`@UseGuards`) and keep any computation/cross-aggregate fetch in the feature or domain layer — the resolver stays logic-free, but the query is a *named* read, not a generic parameterized one (see [domain-services.md](./domain-services.md) read-shape). Trivial CRUD with no such logic should NOT be dressed up in extra machinery either — match the shape to the read.
+- **The FE/mobile GraphQL selection set is the contract.** If you change a query's arguments or return shape, the consuming FE/mobile documents and their codegen MUST change in the same diff (code-review-verifier enforces this coherence check). Don't make a query selection-driven on the backend and leave consumers to drift.
+- Errors return as GraphQL errors with `extensions.code` — see [exceptions.md](./exceptions.md)
+- HTTP status codes don't apply — return error codes via `extensions`
+- Subscriptions are **not enabled** — they're opt-in in `@nestjs/graphql` (no `subscriptions` config = off), and Lambda can't hold the connections anyway — see [lambda.md](./lambda.md)

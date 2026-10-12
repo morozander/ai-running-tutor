@@ -1,0 +1,78 @@
+---
+description: Domain exceptions and GraphQL error mapping
+globs: "backend/src/**/*.ts"
+alwaysApply: false
+---
+
+# Exception Handling
+
+## Domain exceptions
+
+Throw from `@core/exceptions/domain.exceptions`:
+
+```ts
+throw new EntityNotFoundException('User', userId);        // 404
+throw new EntityAlreadyExistsException('User', email);    // 409
+throw new DomainValidationException('Invalid email');     // 400
+throw new UnauthorizedOperationException('delete user');  // 403
+throw new BusinessRuleViolationException('Already admin');// 422
+```
+
+## Exception base shape
+
+```ts
+export abstract class DomainException extends Error {
+  abstract readonly code: string;       // e.g. 'ENTITY_NOT_FOUND'
+  abstract readonly statusCode: number; // HTTP status (for REST clients only)
+}
+```
+
+## GraphQL error mapping
+
+Domain exceptions are mapped to GraphQL errors automatically by `GraphqlExceptionFilter`:
+
+```graphql
+{
+  "errors": [{
+    "message": "User with identifier 'abc' not found",
+    "extensions": {
+      "code": "ENTITY_NOT_FOUND",
+      "statusCode": 404
+    }
+  }]
+}
+```
+
+Frontend consumers read `extensions.code`, not `statusCode` — GraphQL doesn't carry HTTP semantics.
+
+Heads-up (THIS repo): `graphql.module.ts`'s `formatError` currently rewrites errors to top-level `{ code, statusCode }` despite an "ONLY FOR DEV ENVS" comment — it runs unconditionally. Until that's aligned with the `extensions.code` contract (owner decision pending), verify the actual wire shape before writing consumer error handling.
+
+## Where to throw what
+
+- **Entities** — validation errors during domain operations (`DomainValidationException`)
+- **Domain services** — `EntityNotFoundException` for missing reads
+- **Feature services** — `EntityAlreadyExistsException`, `BusinessRuleViolationException`, `UnauthorizedOperationException`
+
+## The HTTP-exception boundary
+
+NestJS HTTP exceptions (`UnauthorizedException`, `BadRequestException`, …) belong **where HTTP semantics live** — guards and webhook/REST controllers, the edges where the caller speaks HTTP. Anything reachable from a GraphQL resolver throws domain exceptions; HTTP exceptions there bypass the GraphQL filter and produce inconsistent shapes. The signal: *who catches it?* If the answer is "the GraphQL error pipeline", it must be a `DomainException`; if "an HTTP client like a Cognito trigger", an HTTP exception is correct.
+
+- ✅ e.g. (THIS repo): `AuthGuard` and `CognitoWebhookController` throw `UnauthorizedException` — both are HTTP-shaped edges.
+- ❌ Known drift, do not copy: `registration.service.ts` throws `BadRequestException` from a resolver-reachable service. Replacing those is a contract change (consumers may match on the current error shape) and one of them ("Registration service not initialized") is an internal/config failure, not a client 400 — so the cleanup is an owner decision, not a drive-by fix.
+
+## Logging at the filter — three tiers
+
+The goal: a WARN/ERROR stream that stays meaningful. At the global exception filter:
+
+- **Domain exceptions** → pass through without re-logging — the raising site already logged what matters; double-logging doubles the noise.
+- **Framework/3rd-party `HttpException`s** → log WARN, normalize into the repo error shape before returning.
+- **Truly unknown exceptions** → log the raw error WITH stack at ERROR, return a sanitized generic 500 — internals never reach the client.
+
+Same discipline at guards: expected lifecycle events (token expiry and the like) log INFO without a stack — they're normal operation, and putting them at WARN drowns the events that need a human.
+
+## Rules
+
+- **Use specific exceptions** — never generic `Error` or NestJS `BadRequestException` for domain-level concerns
+- **Never catch-and-ignore** — always handle or rethrow
+- **Don't leak internals** — exception messages should be user-readable; technical details go to logs
+- **HTTP exceptions only at HTTP-shaped edges** (guards, webhook/REST controllers) — see "The HTTP-exception boundary" above; resolver-reachable code throws domain exceptions

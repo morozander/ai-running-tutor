@@ -1,0 +1,178 @@
+---
+description: SQL / query performance gates - pagination, N+1, indexes, projection, batching (MikroORM + Postgres + Lambda)
+globs: "backend/**/*.ts"
+alwaysApply: false
+---
+
+# SQL & Query Performance (Required Gates)
+
+Every DB access runs inside a short-lived Lambda against Postgres via MikroORM.
+Slow or unbounded queries directly cost latency, connections, and money. The rules
+below are **gates**: generated code that violates them must be fixed before it ships.
+
+> Rule of thumb: **bound every result set, resolve relations in one round-trip, select
+> only what you need, and index everything you filter / sort / join on.**
+
+## 1. Bound every result set (no unbounded reads)
+
+`find`/`findAll`/`QueryBuilder` without a limit will `SELECT` an entire table as it grows.
+
+```typescript
+// ❌ BANNED - unbounded scan, memory + latency blow up over time
+await this.em.find(User, {});
+await this.em.find(User, { role: UserRole.USER });
+
+// ✅ Always paginate, and CAP the page size (callers cannot ask for 1M rows)
+const MAX_PAGE_SIZE = 100;
+
+async findAll(options: { limit?: number; offset?: number } = {}) {
+  const limit = Math.min(options.limit ?? 20, MAX_PAGE_SIZE); // clamp — required
+  const offset = options.offset ?? 0;
+
+  const [users, total] = await this.em.findAndCount(
+    User,
+    {},
+    { limit, offset, orderBy: { createdAt: 'DESC' } },
+  );
+  return { users, total };
+}
+```
+
+- Every list query needs `limit` (clamped to a `MAX_PAGE_SIZE`) + a stable `orderBy`.
+- Deep offset pagination is slow; prefer **keyset/cursor** pagination (`createdAt < :cursor`)
+  for large or hot lists.
+
+## 2. Kill N+1 (resolve relations in one round-trip)
+
+The single biggest source of slow endpoints. Never trigger a query per item.
+
+```typescript
+// ❌ BANNED - one query per user (N+1)
+const users = await this.em.find(User, {}, { limit });
+for (const u of users) {
+  u.assignedTasks.getItems(); // lazy load fires a query each iteration
+}
+
+// ✅ Load relations up front with an explicit strategy
+await this.em.find(
+  User,
+  {},
+  { limit, populate: ['assignedTasks'], strategy: LoadStrategy.SELECT_IN },
+);
+```
+
+- Use `populate` with an explicit `strategy`:
+  - `SELECT_IN` (default, batched `WHERE id IN (...)`) for to-many — avoids row explosion.
+  - `JOINED` for to-one when you always need it.
+- **Never** run `em.find*` / `em.count` inside a `for` / `.map` / `Promise.all(items.map(...))`
+  over query results. Batch with a single `{ id: { $in: ids } }` query instead.
+- For GraphQL `@ResolveField` relations, batch with **DataLoader** (see `graphql-patterns`).
+
+## 3. Select only the columns you need
+
+MikroORM selects every mapped column by default. Wide rows waste IO on hot paths.
+
+```typescript
+// ❌ loads every column (and heavy/unused ones)
+const users = await this.em.find(User, { role }, { limit });
+
+// ✅ project only what the caller uses
+const users = await this.em.find(
+  User,
+  { role },
+  { fields: ['id', 'email', 'firstName'], limit },
+);
+```
+
+- Use `fields: [...]` for read paths that don't need the whole entity.
+- Mark large/rarely-needed columns `@Property({ lazy: true })` so they load only on demand.
+- Existence checks use `em.count(...)` — never `find(...).length`.
+
+## 4. Index everything you filter, sort, or join on
+
+An unindexed `WHERE` / `ORDER BY` / FK join = sequential scan. Declare indexes on the
+entity **and generate a migration** (`db:migrate:create`) — an `@Index` without a
+migration does nothing in Postgres.
+
+```typescript
+@ObjectType()
+@Entity({ tableName: 'users' })
+@Index({ properties: ['role', 'createdAt'] }) // matches: WHERE role = ? ORDER BY created_at
+export class User extends BaseEntity {
+  @Field()
+  @Property({ unique: true }) // unique already creates an index — good
+  email!: string;
+
+  @Field(() => UserRole)
+  @Index() // filtered on → index it
+  @Enum({ items: () => UserRole })
+  role: UserRole & Opt = UserRole.USER;
+}
+```
+
+Required index checklist:
+- **Every foreign key** (MikroORM does not auto-index FKs on Postgres).
+- **Every column used in `where` / `orderBy` filters**, including in `populate` conditions.
+- **The soft-delete column** — `deletedAt` (in `BaseEntity`) is added to *every* query as
+  `deleted_at IS NULL`; without an index each read scans dead rows. Prefer a **partial index**:
+  ```typescript
+  @Index({ properties: ['createdAt'], expression:
+    'CREATE INDEX idx_users_active ON users (created_at) WHERE deleted_at IS NULL' })
+  ```
+- **Composite indexes** must be ordered `equality columns → range/sort column`
+  (e.g. `(role, created_at)`, not `(created_at, role)`).
+
+## 5. Push work to the database, not to JS
+
+```typescript
+// ❌ fetch-all then filter/sort/aggregate in memory
+const all = await this.em.find(Order, {});
+const paid = all.filter((o) => o.status === 'PAID').slice(0, 20);
+
+// ✅ filter, sort, paginate, aggregate in SQL
+const paid = await this.em.find(Order, { status: 'PAID' },
+  { orderBy: { createdAt: 'DESC' }, limit: 20 });
+```
+
+- Filtering, sorting, pagination, `COUNT`/`SUM`/`AVG` belong in the query.
+- Keep predicates **sargable**: no leading-wildcard `LIKE '%term'` and no functions on an
+  indexed column (`WHERE lower(email) = ?` defeats the index — store normalized instead,
+  as `User.create()` already lowercases `email`, or add a functional index).
+
+## 6. Batch writes (never one statement per row)
+
+```typescript
+// ❌ N INSERTs + N flushes
+for (const dto of dtos) {
+  this.em.persist(User.create(dto));
+  await this.em.flush();
+}
+
+// ✅ one flush for the unit of work / bulk helpers
+for (const dto of dtos) this.em.persist(User.create(dto));
+await this.em.flush();               // single batched transaction
+
+await this.em.upsertMany(User, rows); // bulk upsert
+await this.em.nativeUpdate(User, { role: UserRole.USER }, { ... }); // set-based update
+```
+
+- One `flush()` per unit of work — never inside a loop.
+- Use `insertMany` / `upsertMany` / `nativeUpdate` / `nativeDelete` for set operations.
+
+## 7. Transactions & Lambda
+
+- Keep `em.transactional(...)` **short**: no HTTP/SDK calls or slow work inside — long
+  transactions hold connections from a tiny pool (`pool.max`, see `lambda-optimization`).
+- Reuse the request-scoped `EntityManager`; do not `em.fork()` on hot paths without reason.
+- Avoid redundant reads: pass entities you already loaded instead of re-fetching by id.
+
+## Pre-submit performance gate — verify before finishing
+
+- [ ] Every list query has a **clamped `limit`** + stable `orderBy` (no unbounded `find`).
+- [ ] **No query inside a loop / `.map`** over results; relations use `populate` + `strategy`.
+- [ ] GraphQL relation `@ResolveField`s are **DataLoader-batched**.
+- [ ] Read-only/hot paths use **`fields` projection** where the full entity isn't needed.
+- [ ] Every new **`where`/`orderBy`/FK** column has an **`@Index` + migration** (incl. `deletedAt`).
+- [ ] Filtering/sorting/counting happens **in SQL**, predicates are **sargable**.
+- [ ] Writes are **batched** (single `flush` / bulk helpers), transactions are short.
+- [ ] When in doubt, confirm the plan with `EXPLAIN ANALYZE` / MikroORM query debug logging.

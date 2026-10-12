@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(git:status*)",
+      "Shell(git:diff*)",
+      "Shell(git:log*)",
+      "Shell(git:branch*)",
+      "Shell(git:remote*)",
+      "Shell(pnpm:install*)",
+      "Shell(pnpm:test*)",
+      "Shell(pnpm:check*)",
+      "Shell(pnpm:format*)",
+      "Shell(pnpm:build*)",
+      "Shell(mise)",
+      "Shell(jq)",
+      "Shell(node:.claude/scripts/*)",
+      "Read(.agentic/**)",
+      "Read(.claude/**)"
+    ],
+    "deny": [
+      "Shell(terragrunt:*apply*)",
+      "Shell(terragrunt:*destroy*)",
+      "Shell(terragrunt:*import*)",
+      "Shell(terragrunt:*state rm*)",
+      "Shell(terraform:*apply*)",
+      "Shell(terraform:*destroy*)",
+      "Shell(terraform:*import*)",
+      "Shell(terraform:*state rm*)",
+      "Shell(tofu:*apply*)",
+      "Shell(tofu:*destroy*)",
+      "Shell(tofu:*import*)",
+      "Shell(tofu:*state rm*)",
+      "Shell(cdk:*deploy*)",
+      "Shell(cdk:*destroy*)",
+      "Shell(pulumi:*up*)",
+      "Shell(pulumi:*destroy*)",
+      "Shell(pulumi:*import*)",
+      "Shell(pulumi:*refresh*)"
+    ]
+  }
+}

@@ -1,0 +1,183 @@
+cloudwatch_datasources:
+  dev:     &cloudwatch-dev     "efeeux7ozkm4ge"
+  staging: &cloudwatch-staging "ffeex4dte7z7kc"
+  prod:    &cloudwatch-prod    "cloudwatch-production"
+
+folders:
+  AWS: aws
+
+dashboards:
+  aws-waf:
+    folder_title: AWS
+    overwrite: true
+  aws-s3:
+    folder_title: AWS
+    overwrite: true
+  aws-lambda:
+    folder_title: AWS
+    overwrite: true
+  amazon-rds:
+    folder_title: AWS
+    overwrite: true
+  aws-usage:
+    folder_title: AWS
+    overwrite: true
+  aws-logs-dev:
+    folder_title: AWS
+    file: aws-logs
+    overwrite: true
+    datasource_uid: *cloudwatch-dev
+    title_suffix: " (dev)"
+    uid_suffix: "-dev"
+  aws-logs-staging:
+    folder_title: AWS
+    file: aws-logs
+    overwrite: true
+    datasource_uid: *cloudwatch-staging
+    title_suffix: " (staging)"
+    uid_suffix: "-staging"
+
+slack:
+  channel: "#alerts"
+  text: '{{ template "slack.default.text" . }}'
+
+# Match the working test-rule export: metricQueryType 0 (Metric Search) + metricEditorMode, queryMode, intervalMs, maxDataPoints, etc.
+rule_groups:
+  grafana-alerts:
+    folder_uid: aws
+    interval_seconds: 60
+    rules:
+      - name: Alerts ready
+        condition: A
+        for: 0s
+        annotations:
+          summary: Grafana alerting is configured
+        labels:
+          severity: info
+        data:
+          - ref_id: A
+            datasource_uid: "-100"
+            model: '{"type":"math","expression":"0"}'
+            relative_time_range:
+              from: 600
+              to: 0
+
+  aws-cloudwatch-alerts:
+    folder_uid: aws
+    interval_seconds: 60
+    expand_for_environments: [dev, staging]
+    rules:
+      - name: Lambda Errors
+        condition: C
+        for: 1m
+        annotations:
+          summary: Lambda function errors detected
+          description: One or more Lambda functions have reported errors in the last 5 minutes.
+        labels:
+          severity: warning
+        data:
+          - ref_id: A
+            datasource_uid: cloudwatch
+            model: '{"dimensions":{"FunctionName":"linguist-main-dev"},"expression":"","id":"","intervalMs":1000,"label":"","logGroups":[],"matchExact":true,"maxDataPoints":43200,"metricEditorMode":0,"metricName":"Errors","metricQueryType":0,"namespace":"AWS/Lambda","period":"","queryMode":"Metrics","refId":"A","region":"default","sqlExpression":"","statistic":"Sum"}'
+            relative_time_range:
+              from: 1200
+              to: 0
+          - ref_id: B
+            datasource_uid: "-100"
+            model: '{"expression":"A","intervalMs":1000,"maxDataPoints":43200,"reducer":"sum","refId":"B","type":"reduce"}'
+            relative_time_range:
+              from: 1200
+              to: 0
+          - ref_id: C
+            datasource_uid: "-100"
+            model: '{"conditions":[{"evaluator":{"params":[0],"type":"gt"},"operator":{"type":"and"},"query":{"params":["B"]}}],"expression":"B","intervalMs":1000,"maxDataPoints":43200,"refId":"C","type":"threshold"}'
+            relative_time_range:
+              from: 1200
+              to: 0
+
+      - name: RDS CPU High
+        condition: C
+        for: 1m
+        annotations:
+          summary: RDS CPU utilization is high
+          description: RDS instance CPU is above 80%.
+        labels:
+          severity: warning
+        data:
+          - ref_id: A
+            datasource_uid: cloudwatch
+            model: '{"dimensions":{},"expression":"","id":"","intervalMs":1000,"label":"","logGroups":[],"matchExact":true,"maxDataPoints":43200,"metricEditorMode":0,"metricName":"CPUUtilization","metricQueryType":0,"namespace":"AWS/RDS","period":"","queryMode":"Metrics","refId":"A","region":"default","sqlExpression":"","statistic":"Maximum"}'
+            relative_time_range:
+              from: 1200
+              to: 0
+          - ref_id: B
+            datasource_uid: "-100"
+            model: '{"expression":"A","intervalMs":1000,"maxDataPoints":43200,"reducer":"max","refId":"B","type":"reduce"}'
+            relative_time_range:
+              from: 1200
+              to: 0
+          - ref_id: C
+            datasource_uid: "-100"
+            model: '{"conditions":[{"evaluator":{"params":[80],"type":"gt"},"operator":{"type":"and"},"query":{"params":["B"]}}],"expression":"B","intervalMs":1000,"maxDataPoints":43200,"refId":"C","type":"threshold"}'
+            relative_time_range:
+              from: 1200
+              to: 0
+
+      - name: WAF Blocked Requests
+        condition: C
+        for: 1m
+        annotations:
+          summary: High number of WAF blocked requests
+          description: WAF has blocked more than 10 requests in the last 5 minutes.
+        labels:
+          severity: warning
+        data:
+          - ref_id: A
+            datasource_uid: cloudwatch
+            model: '{"dimensions":{},"expression":"","id":"","intervalMs":1000,"label":"","logGroups":[],"matchExact":true,"maxDataPoints":43200,"metricEditorMode":0,"metricName":"BlockedRequests","metricQueryType":0,"namespace":"AWS/WAF","period":"","queryMode":"Metrics","refId":"A","region":"default","sqlExpression":"","statistic":"Maximum"}'
+            relative_time_range:
+              from: 1200
+              to: 0
+          - ref_id: B
+            datasource_uid: "-100"
+            model: '{"expression":"A","intervalMs":1000,"maxDataPoints":43200,"reducer":"sum","refId":"B","type":"reduce"}'
+            relative_time_range:
+              from: 1200
+              to: 0
+          - ref_id: C
+            datasource_uid: "-100"
+            model: '{"conditions":[{"evaluator":{"params":[10],"type":"gt"},"operator":{"type":"and"},"query":{"params":["B"]}}],"expression":"B","intervalMs":1000,"maxDataPoints":43200,"refId":"C","type":"threshold"}'
+            relative_time_range:
+              from: 1200
+              to: 0
+
+      - name: CloudFront 4xx Error Rate
+        condition: C
+        for: 1m
+        annotations:
+          summary: CloudFront 4xx error rate is high
+          description: CloudFront distribution has elevated 4xx error rate.
+        labels:
+          severity: warning
+        data:
+          - ref_id: A
+            datasource_uid: cloudwatch
+            model: '{"dimensions":{},"expression":"","id":"","intervalMs":1000,"label":"","logGroups":[],"matchExact":true,"maxDataPoints":43200,"metricEditorMode":0,"metricName":"4xxErrorRate","metricQueryType":0,"namespace":"AWS/CloudFront","period":"","queryMode":"Metrics","refId":"A","region":"default","sqlExpression":"","statistic":"Maximum"}'
+            relative_time_range:
+              from: 1200
+              to: 0
+          - ref_id: B
+            datasource_uid: "-100"
+            model: '{"expression":"A","intervalMs":1000,"maxDataPoints":43200,"reducer":"max","refId":"B","type":"reduce"}'
+            relative_time_range:
+              from: 1200
+              to: 0
+          - ref_id: C
+            datasource_uid: "-100"
+            model: '{"conditions":[{"evaluator":{"params":[5],"type":"gt"},"operator":{"type":"and"},"query":{"params":["B"]}}],"expression":"B","intervalMs":1000,"maxDataPoints":43200,"refId":"C","type":"threshold"}'
+            relative_time_range:
+              from: 1200
+              to: 0
+
+tags:
+  ManagedBy: terraform

@@ -1,0 +1,52 @@
+---
+name: kmp-testing
+description: kotlin.test in commonTest, fakes over mocks, and which Gradle task to run
+globs: ["mobile/kmp/**/src/commonTest/**/*.kt", "mobile/kmp/**/src/androidHostTest/**/*.kt"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: normal
+---
+
+# Testing
+
+Every new feature and every bug fix ships with tests. A bug fix needs a regression test that fails before the fix and passes after.
+
+## Placement
+
+| Code under test | Source set |
+|---|---|
+| Shared logic | `commonTest` in the owning module |
+| JVM/driver-dependent (e.g. Room persistence) | `androidHostTest` |
+
+A module runs its `commonTest` on the JVM host only if its `android { }` block declares `withHostTest {}` (the template enables it on `:domain`, `:data`, `:features`). A module without a `commonTest` yields a Gradle `NO-SOURCE` result — expected, not a failure.
+
+Because a ViewModel's `viewModelScope` runs on `Dispatchers.Main`, a ViewModel host test must swap in a test dispatcher: `Dispatchers.setMain(UnconfinedTestDispatcher())` in `@BeforeTest`, `Dispatchers.resetMain()` in `@AfterTest`.
+
+## Tooling
+
+`kotlin.test` plus `kotlinx-coroutines-test` (`runTest`). **No mocking framework is on the classpath and none should be added** — the convention is hand-written fakes.
+
+## What to test
+
+Highest value first: pure domain rules, sync planners and validators; then use-case orchestration; then ViewModel state transitions and submit/enable gates. Prefer pure-logic tests over UI tests.
+
+## Commands
+
+Run from `mobile/kmp/`:
+
+```bash
+./gradlew testAndroidHostTest                     # JVM host tests across all modules that have them
+./gradlew :features:testAndroidHostTest           # one module
+./gradlew :features:iosSimulatorArm64Test         # same commonTest, Kotlin/Native runtime
+```
+
+**A green exit code is not proof the suite ran.** Gradle skips an up-to-date test task and still reports success. Confirm fresh JUnit XML with a non-zero test count under `<module>/build/test-results/testAndroidHostTest/`.
+
+`commonTest` compiles for both the JVM and Kotlin/Native. `testAndroidHostTest` runs the JVM side only — when the change touches `expect`/`actual`, date/time, regex, formatting, dispatchers or serialization, also run the `iosSimulatorArm64Test` variant rather than assuming the JVM pass covers iOS.
+
+## Anti-patterns
+
+- ❌ Adding MockK or Mockito
+- ❌ Asserting on a `Flow` without `runTest`
+- ❌ A test that needs Koin — construct the subject directly
+- ❌ `./gradlew check` as a stand-in for the test task; it folds lint into the test verdict

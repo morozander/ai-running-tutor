@@ -1,0 +1,1 @@
+../.agentic/packages/frontend.md

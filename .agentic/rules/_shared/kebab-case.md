@@ -1,0 +1,54 @@
+---
+name: kebab-case
+description: All file and folder names use kebab-case across the monorepo
+globs: ["**/*"]
+alwaysApply: true
+applies_to: [cursor, claude]
+priority: high
+---
+
+# Kebab-case file and folder names
+
+Every file and folder name uses `kebab-case`.
+
+## Why
+
+- Eliminates case-sensitivity bugs between macOS (case-insensitive default) and Linux CI (case-sensitive)
+- Makes import paths predictable
+- Mechanical to enforce — no judgement calls per case
+
+## Examples
+
+```
+✅ user-profile.tsx           ✅ use-search-param-state.ts
+✅ auth-form.ts               ✅ get-user-by-id.query.ts
+✅ user-profile/              ✅ admin-form-fields/
+❌ UserProfile.tsx            ❌ useSearchParamState.ts
+❌ auth_form.ts               ❌ getUserById.query.ts
+```
+
+## Exceptions
+
+Inside a file, identifiers follow language conventions:
+
+- **React components**: PascalCase (`function UserProfile() {}`)
+- **Classes, types, enums**: PascalCase (`class UserService {}`, `type UserProps = ...`)
+- **Functions, hooks, variables**: camelCase (`useUserData`, `currentUser`)
+- **Constants**: SCREAMING_SNAKE_CASE (`MAX_RETRIES`)
+
+The following filenames are allowed in their canonical form because external tooling expects them:
+
+- `Dockerfile`, `Makefile`
+- `README.md`, `CHANGELOG.md`, `LICENSE`
+- `CLAUDE.md`, `AGENTS.md`
+- Generated files that mirror an external schema (graphql codegen output)
+- **Router-framework special files keep the framework's canonical names** — the router's own docs outrank kebab-case, because the filename IS the routing API (Expo Router: `_layout.tsx`, `(group)/` route-group dirs, `[param].tsx`, `+not-found.tsx`; other routers have their own conventions). e.g. (THIS repo): `mobile/expo-boilerplate/app/` currently has `_layout.tsx` and `(tabs)/` — renaming them breaks routing. Non-routing files and dirs around them stay kebab-case.
+
+## Hooks
+
+Custom React hooks live in `use-*.ts` files. The file name and the exported hook differ in case:
+
+```ts
+// src/hooks/use-debounced-value.ts
+export function useDebouncedValue<T>(value: T, delay: number): T { ... }
+```

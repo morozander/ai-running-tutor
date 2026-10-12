@@ -1,0 +1,4 @@
+# Local run artifacts — recordings are kept only for failing runs, never committed.
+*.mp4
+*.webm
+*.gif

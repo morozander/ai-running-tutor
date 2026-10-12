@@ -1,0 +1,148 @@
+---
+description: i18next + expo-localization — message location, namespace conventions, dynamic loading
+globs: "mobile/expo-boilerplate/src/**/*.ts,mobile/expo-boilerplate/src/**/*.tsx,mobile/expo-boilerplate/assets/locales/**/*"
+alwaysApply: false
+---
+
+# Mobile i18n
+
+**i18next + react-i18next + expo-localization.** All user-facing strings go through i18n — no hardcoded display text in components.
+
+The en/uk locale pair in the examples below is e.g. (THIS repo) — the configured languages are a product decision, not part of the convention (and only `en.json` is committed so far; add the second locale file when its content exists, don't stub it).
+
+## Setup
+
+```ts
+// src/config/i18n.ts
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import * as Localization from 'expo-localization';
+
+import en from '@assets/locales/en.json';
+import uk from '@assets/locales/uk.json';
+
+i18n
+  .use(initReactI18next)
+  .init({
+    lng: Localization.getLocales()[0]?.languageCode ?? 'en',
+    fallbackLng: 'en',
+    resources: { en: { translation: en }, uk: { translation: uk } },
+    interpolation: { escapeValue: false },  // RN already escapes
+    returnNull: false,
+  });
+
+export default i18n;
+```
+
+Import once in the root layout or app entry so `i18n` is initialized before any component renders.
+
+## Message files
+
+Located in `assets/locales/<lang>.json`. **One file per language, namespaced by feature:**
+
+```json
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete"
+  },
+  "profile": {
+    "title": "Your profile",
+    "edit": {
+      "label": "Edit profile",
+      "success": "Profile updated"
+    }
+  },
+  "errors": {
+    "required": "This field is required",
+    "invalidEmail": "Please enter a valid email"
+  }
+}
+```
+
+Keep nesting shallow — 3 levels max. Past that, split the namespace into separate top-level keys.
+
+## Reading translations
+
+```tsx
+import { useTranslation } from 'react-i18next';
+
+export function ProfileScreen() {
+  const { t } = useTranslation();
+
+  return (
+    <View>
+      <ThemedText type="title">{t('profile.title')}</ThemedText>
+      <Button onPress={onEdit}>{t('profile.edit.label')}</Button>
+    </View>
+  );
+}
+```
+
+## Interpolation
+
+```json
+{
+  "greeting": "Hello, {{name}}",
+  "itemCount": "{{count}} item",
+  "itemCount_plural": "{{count}} items"
+}
+```
+
+```tsx
+t('greeting', { name: user.firstName });
+t('itemCount', { count: items.length });  // auto-pluralizes
+```
+
+## Validation messages
+
+Localize Zod schema messages by passing `t` into the schema factory:
+
+```ts
+import { z } from 'zod';
+import type { TFunction } from 'i18next';
+
+export const getProfileSchema = (t: TFunction) => z.object({
+  email: z.string().min(1, t('errors.required')).email(t('errors.invalidEmail')),
+});
+
+// In component
+const { t } = useTranslation();
+const form = useForm({ resolver: zodResolver(getProfileSchema(t)) });
+```
+
+## Date / number formatting
+
+Use `Intl.DateTimeFormat` and `Intl.NumberFormat` with the current locale:
+
+```ts
+import * as Localization from 'expo-localization';
+
+const locale = i18n.language;  // e.g., 'en', 'uk'
+const formatted = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
+```
+
+For complex date logic, use `date-fns` with locale imports — but watch bundle size.
+
+## Language switching
+
+```ts
+import i18n from '@/config/i18n';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+async function changeLanguage(lang: string) {
+  await i18n.changeLanguage(lang);
+  await AsyncStorage.setItem('app:language', lang);
+}
+```
+
+On app launch, restore the saved language before initializing i18n.
+
+## Hard rules
+
+- ❌ Hardcoded display strings in components — every visible text goes through `t()`
+- ❌ String concatenation for translated strings — use interpolation (`t('greeting', { name })`)
+- ❌ Deeply nested keys (>3 levels) — split namespaces instead
+- ❌ Forgetting `returnNull: false` — silently returns `null` and crashes JSX
+- ❌ Calling `i18n.t()` outside of a component without `useTranslation()` — bypasses the React update cycle on language change

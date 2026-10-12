@@ -1,0 +1,167 @@
+---
+name: mobile-routing
+description: Expo Router file-based routing — layouts, groups, dynamic params, deep links
+globs: ["mobile/expo-boilerplate/app/**/*"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: high
+---
+
+# Mobile Routing
+
+**Expo Router** — file-based routing built on `react-navigation`. Routes are files in `app/`; layouts are `_layout.tsx`; groups are `(name)/`; dynamic params are `[name].tsx`.
+
+## File → route mapping
+
+| File | URL / route |
+|---|---|
+| `app/index.tsx` | `/` |
+| `app/modal.tsx` | `/modal` |
+| `app/(tabs)/index.tsx` | `/` (within tabs group) |
+| `app/(tabs)/explore.tsx` | `/explore` |
+| `app/users/[id].tsx` | `/users/:id` |
+| `app/users/[id]/posts.tsx` | `/users/:id/posts` |
+| `app/[...slug].tsx` | catch-all route |
+| `app/(auth)/sign-in.tsx` | `/sign-in` (auth group — no URL segment) |
+
+## Layouts
+
+Every directory can have a `_layout.tsx` that wraps its children:
+
+```tsx
+// app/_layout.tsx — root layout
+import { Stack } from 'expo-router';
+import { Providers } from '@/providers';
+
+export default function RootLayout() {
+  return (
+    <Providers>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+      </Stack>
+    </Providers>
+  );
+}
+```
+
+```tsx
+// app/(tabs)/_layout.tsx — tab layout
+import { Tabs } from 'expo-router';
+
+export default function TabLayout() {
+  return (
+    <Tabs screenOptions={{ headerShown: false }}>
+      <Tabs.Screen name="index" options={{ title: 'Home' }} />
+      <Tabs.Screen name="explore" options={{ title: 'Explore' }} />
+    </Tabs>
+  );
+}
+```
+
+## Route groups
+
+Parentheses `(group-name)/` create groups without adding a URL segment. Use for:
+
+- Tab bar groups: `(tabs)/`
+- Auth-required vs public split: `(authenticated)/` vs `(public)/`
+- Modal stacks: `(modal)/`
+
+## Dynamic params
+
+Read with `useLocalSearchParams` (typed generic):
+
+```tsx
+import { useLocalSearchParams } from 'expo-router';
+
+export default function UserDetail() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <UserDetailScreen userId={id} />;
+}
+```
+
+## Navigation
+
+Paths live as constants — never inline route strings at call sites (see hard rules):
+
+```ts
+// src/constants/routes.ts
+import type { Href } from 'expo-router';
+
+export const ROUTES = {
+  signIn: '/sign-in',
+  explore: '/explore',
+  userDetail: (id: string): Href => ({ pathname: '/users/[id]', params: { id } }),
+} as const;
+```
+
+```tsx
+import { useRouter, Link } from 'expo-router';
+import { ROUTES } from '@/constants/routes';
+
+const router = useRouter();
+router.push(ROUTES.userDetail('123'));
+router.replace(ROUTES.signIn);
+router.back();
+
+<Link href={ROUTES.explore}>Go to explore</Link>
+<Link href={ROUTES.userDetail('123')}>User 123</Link>
+```
+
+Typed routes (e.g. (THIS repo): `experiments.typedRoutes: true` in `app.json`) type-check every `href` / `router.push` argument against the real route tree. WHEN typed routes are on, the compiler catches typos and the constants' job is preventing path drift across call sites; WHEN they're off, the constants are your only guard — keep them either way.
+
+## Route guards
+
+Wrap protected routes in a group with `_layout.tsx` that checks auth and redirects:
+
+```tsx
+// app/(authenticated)/_layout.tsx
+import { Redirect, Stack } from 'expo-router';
+import { useAuth } from '@/contexts/auth';
+import { ROUTES } from '@/constants/routes';
+
+export default function AuthenticatedLayout() {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading) return <Loader />;
+  if (!isAuthenticated) return <Redirect href={ROUTES.signIn} />;
+  return <Stack />;
+}
+```
+
+## Deep linking
+
+`app.json` defines the URL scheme:
+
+```json
+{
+  "expo": {
+    "scheme": "myapp"
+  }
+}
+```
+
+Deep links automatically map to routes: `myapp://users/123` opens `app/users/[id].tsx`.
+
+Configure prefixes for universal links via `expo-linking`:
+
+```ts
+import * as Linking from 'expo-linking';
+
+const prefix = Linking.createURL('/');  // myapp://
+```
+
+Deep-link decision signals:
+
+- **WHEN a link can arrive while the user is logged out** — don't drop it. Stash the target route (state or storage), redirect to sign-in, and navigate to the stashed target after auth completes.
+- **WHEN a link is invalid for the current auth state and stash-and-replay doesn't apply** (e.g. a logged-in-only action that can't resume after sign-in) — explicit user feedback (toast/alert), never a silent drop.
+- **WHEN links must open from web or email** (not just app-to-app) — the custom scheme isn't enough. Configure universal links / Android App Links: AASA via `ios.associatedDomains` and `assetlinks.json` via `android.intentFilters` in app config.
+- **Keep a `DEEPLINKS.md` at the app root** (`mobile/expo-boilerplate/DEEPLINKS.md`, THIS repo) the moment the app supports more than the default route mapping — every supported link, its params, and its auth precondition. QA, marketing, and push-payload authors consume this contract; an undocumented link surface gets discovered by breakage.
+
+Anti-example from a company app: a `setTimeout(3000)` re-firing `Linking.openURL` to dodge the auth-bootstrap race — a sleep-based fix for exactly the race stash-and-replay solves. If a deep link needs a timer, the auth-readiness signal is missing, not slow.
+
+## Hard rules
+
+- ❌ Business logic in `app/` files — they wrap screens, nothing more
+- ❌ Hardcoded route strings — define paths as constants in `@/constants/routes.ts`
+- ❌ `react-navigation` imports outside `app/_layout.tsx` and similar — let Expo Router manage the stack
+- ❌ Manual `<NavigationContainer>` — Expo Router provides it

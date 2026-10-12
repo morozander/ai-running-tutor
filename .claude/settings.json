@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git remote*)",
+      "Bash(pnpm install*)",
+      "Bash(pnpm test*)",
+      "Bash(pnpm check*)",
+      "Bash(pnpm format*)",
+      "Bash(pnpm build*)",
+      "Bash(mise *)",
+      "Bash(jq *)",
+      "Bash(node .claude/scripts/*)",
+      "Read(//${CLAUDE_PROJECT_DIR}/.agentic/**)",
+      "Read(//${CLAUDE_PROJECT_DIR}/.claude/**)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/session-start.sh"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/check-runtime-ledgers.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-tool-use.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins"
+      }
+    }
+  },
+  "_comment": "Committed Claude Code settings for this monorepo. See settings.local.json for per-dev overrides. enabledMcpjsonServers is project-scoped here so a fresh clone gets the servers enabled (still subject to the per-server trust prompt).",
+  "enabledMcpjsonServers": ["internal-jira", "figma-desktop", "figma"],
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true
+  }
+}

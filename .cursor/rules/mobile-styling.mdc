@@ -1,0 +1,195 @@
+---
+description: StyleSheet + theme tokens + Platform.select + responsive sizing
+globs: "mobile/expo-boilerplate/src/**/*.tsx,mobile/expo-boilerplate/src/**/*.ts"
+alwaysApply: false
+---
+
+# Mobile Styling
+
+**StyleSheet.create + theme tokens.** No Tailwind, no styled-components/RN. (Future: NativeWind is an option if alignment with FE Tailwind becomes worth it.)
+
+## Theme tokens
+
+`src/constants/theme.ts` is the single source for color/spacing/typography tokens. The **values come from the ticket's confirmed Figma design tokens** (cached under `.agentic/plans/<TICKET>/figma/` by `/start`) — derive them from the design; never invent them, and never leave a framework starter's defaults in place. The shape:
+
+```ts
+// src/constants/theme.ts — token NAMES are the convention; VALUES come from the
+// confirmed Figma variables (every token needs both a light and a dark value)
+import { Platform } from 'react-native';
+
+export const Colors = {
+  light: {
+    text: '<figma text/primary>',
+    background: '<figma surface/default>',
+    tint: '<figma brand/accent>',          // the brand accent drives links, selection, CTAs
+    icon: '<figma icon/muted>',
+    tabIconDefault: '<figma icon/muted>',
+    tabIconSelected: '<figma brand/accent>',
+    border: '<figma border/default>',
+    error: '<figma feedback/error>',
+  },
+  dark: {
+    // same token names, the design's dark values — never reuse light values here
+  },
+};
+```
+
+> ⚠ **ANTI-example — the Expo starter palette.** A `theme.ts` still carrying the starter stub (the giveaway is the default accent `tint: '#0a7ea4'`) is an UNBRANDED design system: `/start`'s foundation check, the explorer, and `design-parity` all treat that exact state as a BLOCKING gap on UI tickets. (THIS repo's `theme.ts` is currently in that state — replace it via a foundation/design-system task derived from Figma; never copy the starter values into new work as if they were house style.)
+
+```ts
+// Branded fonts load via expo-font and slot in here; the Platform.select shape below
+// is the system-font FALLBACK structure, not a statement that system fonts are the brand.
+export const Fonts = Platform.select({
+  ios: {
+    sans: 'system-ui',
+    serif: 'ui-serif',
+    rounded: 'ui-rounded',
+    mono: 'ui-monospace',
+  },
+  default: {
+    sans: 'normal',
+    serif: 'serif',
+    rounded: 'normal',
+    mono: 'monospace',
+  },
+});
+
+// Spacing/Radius scale VALUES are e.g. (THIS repo) illustrations — confirm against
+// the design's spacing tokens; the convention is the named scale, not these numbers.
+export const Spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  '2xl': 32,
+} as const;
+
+export const Radius = {
+  sm: 4,
+  md: 8,
+  lg: 12,
+  xl: 16,
+  full: 9999,
+} as const;
+```
+
+## `useThemeColor` hook
+
+```ts
+// src/hooks/use-theme-color.ts
+import { useColorScheme } from './use-color-scheme';
+import { Colors } from '@/constants/theme';
+
+type ColorName = keyof typeof Colors.light & keyof typeof Colors.dark;
+
+export function useThemeColor(
+  props: { light?: string; dark?: string },
+  colorName: ColorName,
+) {
+  const theme = useColorScheme() ?? 'light';
+  return props[theme] ?? Colors[theme][colorName];
+}
+```
+
+Consumers read by token, with optional overrides:
+
+```tsx
+const color = useThemeColor({}, 'text');
+const tint = useThemeColor({ light: '#1565c0', dark: '#90caf9' }, 'tint');
+```
+
+## StyleSheet at module scope
+
+Always define styles outside the component to avoid re-creation on every render. Module scope can't react to theme changes, so the split is: **structure (layout, spacing, type sizes) in the StyleSheet; colors resolved per-theme at render** — via the themed primitives, or `useThemeColor` composed in a style array. Never pin a theme (`Colors.light.*`) or a hex literal in a module-scope StyleSheet — that breaks dark mode for every consumer.
+
+```tsx
+// ✅ — structure at module scope, colors from the theme at render
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: Spacing.lg },
+  title: { fontSize: 20, fontWeight: 'bold' },
+});
+
+export function Card({ children }: { children: ReactNode }) {
+  return (
+    <ThemedView style={styles.container}>
+      <ThemedText type="subtitle" style={styles.title}>Card title</ThemedText>
+      {children}
+    </ThemedView>
+  );
+}
+
+// ✅ — when a themed primitive doesn't fit, compose useThemeColor in a style array
+export function Badge({ label }: { label: string }) {
+  const background = useThemeColor({}, 'tint');
+  return <View style={[styles.container, { backgroundColor: background }]}>...</View>;
+}
+
+// ❌ — created on every render
+export function Card() {
+  const styles = StyleSheet.create({ container: { ... } });
+  return <View style={styles.container} />;
+}
+
+// ❌ — theme pinned at module scope: ignores dark mode
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#fff' },
+  title: { color: Colors.light.text },
+});
+```
+
+## Dynamic styles
+
+For values that genuinely depend on props or theme, compose arrays:
+
+```tsx
+const color = useThemeColor({}, 'text');
+
+<Text style={[styles.text, { color }]}>Hello</Text>
+```
+
+Avoid inline style objects with literal values — those should go in the StyleSheet.
+
+## Platform-specific values
+
+Use `Platform.select` for cross-platform differences:
+
+```ts
+const headerHeight = Platform.select({ ios: 44, android: 56, default: 50 });
+
+const styles = StyleSheet.create({
+  header: {
+    height: headerHeight,
+    paddingTop: Platform.OS === 'ios' ? 20 : 0,
+  },
+});
+```
+
+For larger divergences, use platform-specific files — see [platform-files.md](./platform-files.md).
+
+## Responsive sizing
+
+For layouts that scale to different screens:
+
+```ts
+import { useWindowDimensions } from 'react-native';
+
+const { width, height } = useWindowDimensions();
+const isTablet = width >= 768;
+```
+
+For typography scaling, use `PixelRatio.getFontScale()` — respect the user's accessibility settings.
+
+## Light / dark mode
+
+`useColorScheme()` from `@/hooks/use-color-scheme` returns `'light' | 'dark' | null`. Components consume via `useThemeColor`. The themed primitives (`<ThemedText>`, `<ThemedView>`) wrap this so you rarely call `useThemeColor` directly.
+
+Default to system theme; allow user override stored in AsyncStorage if needed.
+
+## Hard rules
+
+- ❌ Inline `StyleSheet.create()` inside component body
+- ❌ Hex literals scattered through components — use `Colors` or `useThemeColor`
+- ❌ `style={{ ...obj, ...override }}` — use `style={[base, override]}` arrays
+- ❌ `Dimensions.get('window').width` in render — use `useWindowDimensions` (responds to rotation)
+- ❌ Platform checks inside `render` for non-trivial divergence — use platform-specific files instead

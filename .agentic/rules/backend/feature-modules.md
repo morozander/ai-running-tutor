@@ -1,0 +1,98 @@
+---
+name: backend-feature-modules
+description: Feature module patterns — mutations, resolvers, DTOs
+globs: ["backend/src/modules/features/**/*.ts"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: high
+---
+
+# Feature Modules
+
+Feature modules handle:
+
+- **All mutations** (create / update / delete)
+- GraphQL resolvers
+- DTOs (input / output types)
+- External-service orchestration (Cognito, S3, Bedrock, etc.)
+
+## Service pattern
+
+```ts
+@Injectable()
+export class RegistrationService {
+  constructor(
+    private readonly em: EntityManager,        // direct for writes
+    private readonly userService: UserService, // domain service for reads
+    private readonly configService: ConfigService,
+  ) {}
+
+  @Span('registration.registerUser')  // OpenTelemetry
+  async registerUser(input: RegisterUserInput): Promise<User> {
+    if (await this.userService.isEmailTaken(input.email)) {
+      throw new EntityAlreadyExistsException('User', input.email);
+    }
+
+    const user = User.create({
+      id: cognitoUserId,
+      email: input.email,
+      firstName: input.firstName,
+    });
+
+    await this.em.persistAndFlush(user);
+    return user;
+  }
+}
+```
+
+## Resolver pattern
+
+```ts
+@Resolver(() => User)
+export class RegistrationResolver {
+  constructor(
+    private readonly registrationService: RegistrationService,
+    private readonly userService: UserService,  // for queries
+  ) {}
+
+  @Mutation(() => RegistrationResponse)
+  async registerUser(@Args('input') input: RegisterUserInput) {
+    return this.registrationService.registerUser(input);
+  }
+
+  @Query(() => User)
+  @UseGuards(AuthGuard)
+  async me(@CurrentUser() user: CurrentUserPayload) {
+    return this.userService.findById(user.userId); // normalized payload — see auth.md
+  }
+}
+```
+
+## Module setup
+
+```ts
+@Module({
+  imports: [UserModule],  // import domain modules
+  providers: [RegistrationService, RegistrationResolver],
+})
+export class RegistrationModule {}
+```
+
+## Mutation idempotency
+
+The signal: *can the caller distinguish "failed" from "succeeded but the response was lost"?* If not, design for the retry.
+
+- **WHEN a mutation can be delivered twice** (client retry on timeout, queue redelivery, webhook re-fire — i.e. anything retryable or external-facing) → make repeating it safe: check-then-act on a natural key inside the same unit of work, or treat "already in target state" as success and return the existing result instead of throwing. e.g. (THIS repo): `cognito-webhook.service.ts` checks the user id first and returns `created: false` on replay.
+- **WHEN only an interactive user can trigger it once** (a button that disables while pending) → plain create-or-conflict is fine; don't add idempotency ceremony it doesn't need.
+
+Queue/cron/webhook callers and their delivery semantics: [background-work.md](./background-work.md).
+
+## Rules
+
+- Mutations go through `EntityManager`, not domain services
+- Reads delegate to a domain service (never query directly from a feature service)
+- The uniqueness pre-check (`isEmailTaken` above) is friendly but racy — the DB constraint is the source of truth; translate flush-time constraint violations into domain exceptions — see [mikroorm.md](./mikroorm.md) §Constraint violations
+- Outbound HTTP to external services follows the resilience contract (timeout, retry classification, retry budget) — see [http-clients.md](./http-clients.md)
+- `@Span()` on methods that cross an I/O or business boundary worth finding in a trace — see [opentelemetry.md](./opentelemetry.md)
+- Throw domain exceptions on validation/business errors — see [exceptions.md](./exceptions.md)
+- Retryable/external-facing mutations are idempotent — see above

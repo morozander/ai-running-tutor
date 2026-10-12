@@ -1,0 +1,206 @@
+---
+name: frontend-testing
+description: Vitest + React Testing Library patterns
+globs: ["frontend/src/**/*.test.ts", "frontend/src/**/*.test.tsx", "frontend/src/**/*.spec.ts", "frontend/src/**/*.spec.tsx"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: normal
+---
+
+# Frontend Testing
+
+**Test runner:** Vitest 3+
+**Component testing:** `@testing-library/react`, `@testing-library/user-event`
+**Environment:** jsdom (`environment: 'jsdom'` in `vitest.config.ts`)
+
+## File placement
+
+Co-locate tests next to the source file:
+
+```
+features/admins/components/admin-list/
+├── admin-list.tsx
+├── admin-list.test.tsx
+├── use-admin-list.ts
+└── use-admin-list.test.ts
+```
+
+## What to test
+
+| Layer | Test |
+|---|---|
+| Hooks (data, logic) | Behavior — what the hook returns under each input/state |
+| Components | Rendering + user interactions (click, type, submit) |
+| Form schemas (Zod) | Validation errors for invalid inputs, success for valid |
+| Utilities | Pure function I/O |
+| Pages | Smoke test — page renders without throwing |
+
+**Skip testing:**
+
+- shadcn / Radix primitives (already tested upstream)
+- Direct Apollo / RHF calls (already tested upstream)
+- Pure styling (Tailwind classes)
+
+## Test shape
+
+```ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { AdminList } from './admin-list';
+import { useAdminList } from './use-admin-list';
+
+vi.mock('./use-admin-list');
+
+describe('AdminList', () => {
+  beforeEach(() => {
+    vi.mocked(useAdminList).mockReturnValue({
+      admins: [{ id: '1', email: 'a@example.com' }],
+      isLoading: false,
+      showEmptyState: false,
+      onCreate: vi.fn(),
+    });
+  });
+
+  it('renders the admin rows', () => {
+    render(<AdminList />);
+    expect(screen.getByText('a@example.com')).toBeInTheDocument();
+  });
+
+  it('shows the loader when loading', () => {
+    vi.mocked(useAdminList).mockReturnValue({ admins: [], isLoading: true, showEmptyState: false, onCreate: vi.fn() });
+    render(<AdminList />);
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+
+  it('shows the empty state when no admins', () => {
+    vi.mocked(useAdminList).mockReturnValue({ admins: [], isLoading: false, showEmptyState: true, onCreate: vi.fn() });
+    render(<AdminList />);
+    expect(screen.getByText(/no admins yet/i)).toBeInTheDocument();
+  });
+
+  it('calls onCreate when the invite button is clicked', async () => {
+    const onCreate = vi.fn();
+    vi.mocked(useAdminList).mockReturnValue({ admins: [], isLoading: false, showEmptyState: true, onCreate });
+    render(<AdminList />);
+
+    await userEvent.click(screen.getByRole('button', { name: /invite admin/i }));
+    expect(onCreate).toHaveBeenCalled();
+  });
+});
+```
+
+## One shared render — providers wired once
+
+Tests import `render` from the shared test-utils module (e.g. (THIS repo): `src/tests/render.tsx`), which wraps every app-level provider and re-exports RTL. **Never compose providers ad hoc per test** — when a new provider lands (theme, auth), it's added here once and every existing test inherits it:
+
+```tsx
+// src/tests/render.tsx
+import { MockedProvider, type MockedResponse } from '@apollo/client/testing/react'; // Apollo 4 path — '@apollo/client/testing' no longer exports it
+import { render as rtlRender } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { MemoryRouter } from 'react-router';
+
+type Options = { mocks?: MockedResponse[]; route?: string };
+
+export function render(ui: ReactElement, { mocks = [], route = '/' }: Options = {}) {
+  return rtlRender(
+    <MockedProvider mocks={mocks}>
+      <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+    </MockedProvider>,
+  );
+}
+
+export * from '@testing-library/react';
+```
+
+Inline `<MockedProvider>` composition inside a test file is the escape hatch for unusual provider shapes, not the default.
+
+## Mocking Apollo
+
+For hook-level tests, mock the wrapping hook (`useGetAdmins`) instead of Apollo's `useQuery`. For full component tests that need real Apollo, pass per-test GraphQL mocks through the shared render:
+
+```tsx
+import { GET_ALL_ADMINS } from '@/graphql/queries/admins';
+import { render } from '@/tests/render';
+
+const mocks = [{
+  request: { query: GET_ALL_ADMINS, variables: { input: { page: 1, pageSize: 10 } } },
+  result: { data: { getAllAdmins: { admins: [{ id: '1', email: 'a@example.com' }], total: 1 } } },
+}];
+
+render(<AdminList />, { mocks });
+```
+
+## Mocking the router
+
+```ts
+import { render } from '@/tests/render';
+
+render(<AdminsPage />, { route: '/admins' });
+```
+
+## Global test setup
+
+`src/test-setup.ts`:
+
+```ts
+import '@testing-library/jest-dom/vitest';
+import { cleanup } from '@testing-library/react';
+import { afterEach, vi } from 'vitest';
+
+afterEach(() => cleanup());
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+  Toaster: () => null,
+}));
+```
+
+`vitest.config.ts`:
+
+```ts
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import tsconfigPaths from 'vite-tsconfig-paths';
+
+export default defineConfig({
+  plugins: [react(), tsconfigPaths()],
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test-setup.ts'],
+    globals: true,
+  },
+});
+```
+
+## Query priorities
+
+Per RTL guidance:
+
+1. `getByRole` — accessible, mirrors how users navigate
+2. `getByLabelText` — for form fields
+3. `getByPlaceholderText` — last resort for inputs
+4. `getByText` — for non-interactive content
+5. `getByTestId` — last resort
+
+Never query by class name. Never query by Tailwind utility.
+
+## WHEN the repo gains e2e
+
+(THIS repo) has no e2e suite today — don't add one unprompted. WHEN that decision lands (Playwright is the default choice) → the layering is the rule, not the tool:
+
+- Three layers: **spec** (assertions only) → **flow** (reusable user journey) → **page object** (selectors + navigation). Selector churn touches page objects only, never specs.
+- Test-management case IDs (TestRail or equivalent) go in test names when the org tracks them.
+- Configure `testIdAttribute: 'data-testid'` once; `data-testid` is an e2e hook — in unit tests, role-first queries still rule.
+
+## Hard rules
+
+- ❌ `getByTestId` when `getByRole` works
+- ❌ Snapshot tests (brittle, no signal)
+- ❌ Testing implementation details (state, internal functions)
+- ❌ `act()` — RTL's user-event already wraps it
+- ❌ Mocking `useMemo` / `useCallback` — they're implementation details

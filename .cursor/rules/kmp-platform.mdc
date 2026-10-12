@@ -1,0 +1,41 @@
+---
+description: Platform module owns OS capabilities and device APIs via expect/actual or wrappers
+globs: "mobile/kmp/platform/**/*.kt,mobile/kmp/**/src/androidMain/**/*.kt,mobile/kmp/**/src/iosMain/**/*.kt,mobile/kmp/androidApp/**/AndroidManifest.xml,mobile/kmp/iosApp/**/*.plist"
+alwaysApply: false
+---
+
+# `:platform` module
+
+Owns all OS capabilities and platform APIs (Bluetooth, Location, Camera, Push Notifications, sensors, permissions).
+
+## Placement
+
+- Public API in `commonMain` (interfaces / `expect` declarations).
+- Android impl in `androidMain` (AndroidX / platform SDKs).
+- iOS impl in `iosMain` (Apple frameworks).
+- No Compose theme or feature screens here. Platform view-interop `@Composable`s (e.g. a `WebView` / `WKWebView` wrapper) are allowed; keep chrome in `:features`.
+
+Naming for co-located `expect`/`actual`: `Foo.kt` / `Foo.android.kt` / `Foo.ios.kt`. When a platform genuinely cannot support a capability, provide an `actual` that reports it unsupported rather than omitting the file.
+
+> **A missing `actual` is invisible to an Android-only build** — `assembleDebug` passes green while iOS cannot link. Always compile both targets.
+
+## Practices
+
+- Follow official Google and Apple guidance for the capability (permissions, privacy, background limits) — see `platform-best-practices`.
+- **Prefer existing KMP libraries** (Ktor for HTTP, multiplatform-settings for key-value storage, a multiplatform DB for persistence) before hand-rolling an `expect`/`actual`. Reserve `:platform` implementations for capabilities lacking a standard shared library.
+- App hosts (`:androidApp` / `iosApp`) MUST declare every permission and privacy usage description the code requests.
+- Prefer small, testable facades over leaking platform types into `:features`. **`:features` MUST NOT call Android/iOS SDKs directly.**
+- Add tests for new platform behavior (host/unit where possible; document device-only gaps).
+
+```text
+platform/
+  commonMain/.../<capability>/   # e.g. location/, camera/, bluetooth/, notifications/
+  androidMain/.../<capability>/
+  iosMain/.../<capability>/
+```
+
+## Anti-patterns
+
+- ❌ `android.*` or `platform.*` imports in `commonMain`
+- ❌ Declaring a permission with no `actual` that requests it, or requesting one never declared
+- ❌ Adding an `expect` where a KMP library already covers the need

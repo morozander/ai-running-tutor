@@ -1,0 +1,103 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type AuthTokens {
+  accessToken: String!
+  expiresIn: Float!
+  idToken: String!
+  refreshToken: String!
+  tokenType: String!
+}
+
+input ConfirmRegistrationInput {
+  code: String!
+  email: String!
+}
+
+type ConfirmationResponse {
+  message: String!
+  success: Boolean!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+type LoginResponse {
+  email: String!
+  message: String!
+  tokens: AuthTokens!
+  userId: String!
+}
+
+type Mutation {
+  """Confirm registration with email verification code"""
+  confirmRegistration(input: ConfirmRegistrationInput!): ConfirmationResponse!
+
+  """Authenticate user and get access tokens"""
+  login(input: LoginInput!): LoginResponse!
+
+  """Refresh access token using refresh token"""
+  refreshToken(input: RefreshTokenInput!): AuthTokens!
+
+  """Register a new user account"""
+  registerUser(input: RegisterUserInput!): RegistrationResponse!
+
+  """Resend email verification code"""
+  resendVerificationCode(input: ResendVerificationInput!): ConfirmationResponse!
+}
+
+type Query {
+  """Get the currently authenticated user"""
+  me: User!
+
+  """Get a user by ID (admin only)"""
+  user(id: ID!): User!
+}
+
+input RefreshTokenInput {
+  refreshToken: String!
+}
+
+input RegisterUserInput {
+  email: String!
+  firstName: String!
+  lastName: String
+  password: String!
+}
+
+type RegistrationResponse {
+  confirmationRequired: Boolean!
+  email: String!
+  message: String!
+  userId: String!
+}
+
+input ResendVerificationInput {
+  email: String!
+}
+
+type User {
+  createdAt: DateTime!
+  email: String!
+  firstName: String!
+  fullName: String!
+  id: ID!
+  lastLoginAt: DateTime
+  lastName: String!
+  role: UserRole!
+  updatedAt: DateTime!
+}
+
+"""User role for access control"""
+enum UserRole {
+  ADMIN
+  USER
+}

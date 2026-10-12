@@ -1,0 +1,60 @@
+---
+name: backend-naming
+description: Backend-specific naming — file suffixes, classes, DB columns
+globs: ["backend/src/**/*"]
+alwaysApply: false
+applies_to: [cursor, claude]
+priority: normal
+---
+
+# Backend Naming Conventions
+
+For repo-wide kebab-case file rules, see [_shared/kebab-case.md](../_shared/kebab-case.md).
+
+## File suffixes
+
+| Type | Suffix | Example |
+|---|---|---|
+| Module | `.module.ts` | `user.module.ts` |
+| Service | `.service.ts` | `user.service.ts` |
+| Resolver | `.resolver.ts` | `registration.resolver.ts` |
+| Entity | `.entity.ts` | `user.entity.ts` |
+| DTO Input | `.input.ts` | `register-user.input.ts` |
+| DTO Response | `.dto.ts` | `registration-response.dto.ts` |
+| Guard | `.guard.ts` | `auth.guard.ts` |
+| Decorator | `.decorator.ts` | `roles.decorator.ts` |
+| Command (CQRS) | `.command.ts` | `register-user.command.ts` |
+| Query (CQRS) | `.query.ts` | `get-user.query.ts` |
+| Config | `.config.ts` | `database.config.ts` |
+| Test | `.spec.ts` | `user.service.spec.ts` |
+| E2E | `.e2e-spec.ts` | `registration.e2e-spec.ts` |
+
+## Classes & types
+
+| Kind | Convention | Example |
+|---|---|---|
+| Class | PascalCase | `UserService`, `RegistrationResolver` |
+| Enum | PascalCase | `UserRole`, `OrderStatus` |
+| Type / Interface | PascalCase | `CreateUserCommand`, `CurrentUserPayload` |
+| Constants | SCREAMING_SNAKE_CASE | `DATABASE_CONFIG_KEY` |
+| Functions / methods | camelCase | `findById`, `isEmailTaken` |
+
+## Database
+
+| Kind | Convention | Example |
+|---|---|---|
+| Tables | snake_case, plural | `users`, `order_items` |
+| Columns | snake_case | `created_at`, `last_login_at` |
+| Foreign keys | `<entity>_id` suffix | `user_id`, `product_id` |
+| Indexes | `idx_<table>_<columns>` | `idx_users_email` |
+| Constraints | `<type>_<table>_<columns>` | `uq_users_email` |
+
+`UnderscoreNamingStrategy` auto-converts entity property names — see [mikroorm.md](./mikroorm.md).
+
+## GraphQL
+
+- Type names: PascalCase (`User`, `RegistrationResponse`)
+- Field names: camelCase (`firstName`, `createdAt`)
+- Enum values: SCREAMING_SNAKE_CASE (`USER`, `ADMIN`, `PENDING_APPROVAL`)
+- Mutation names: verb-first (`registerUser`, `updateProfile`, `deletePost`)
+- Query names: noun or `get<Noun>` (`me`, `users`, `getUserById`)

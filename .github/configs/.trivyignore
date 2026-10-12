@@ -1,0 +1,5 @@
+# Add CVE IDs to ignore (one per line)
+# Example: CVE-2023-12345
+
+# AWS Lambda base images require root — Lambda runtime manages isolation
+DS-0002

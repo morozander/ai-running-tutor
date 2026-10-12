@@ -1,0 +1,120 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "docker:enableMajor",
+    ":separateMultipleMajorReleases"
+  ],
+  "labels": ["dependencies"],
+  "schedule": ["before 10am every weekday"],
+  "timezone": "Europe/Kiev",
+  "prConcurrentLimit": 10,
+  "branchPrefix": "renovate/",
+  "enabledManagers": [
+    "npm",
+    "dockerfile",
+    "github-actions",
+    "regex",
+    "terragrunt",
+    "terraform"
+  ],
+  "github-actions": {
+    "fileMatch": ["^\\.github/workflows/.*\\.ya?ml$"]
+  },
+  "packageRules": [
+    {
+      "description": "NestJS ecosystem",
+      "groupName": "nestjs",
+      "matchPackagePatterns": ["^@nestjs/"],
+      "matchManagers": ["npm"]
+    },
+    {
+      "description": "MikroORM ecosystem",
+      "groupName": "mikro-orm",
+      "matchPackagePatterns": ["^@mikro-orm/"],
+      "matchManagers": ["npm"]
+    },
+    {
+      "description": "Testing libraries",
+      "groupName": "testing",
+      "matchPackageNames": ["jest", "vitest", "jsdom", "supertest"],
+      "matchPackagePatterns": [
+        "^@testing-library/",
+        "^@types/jest",
+        "^@types/supertest",
+        "^ts-jest"
+      ],
+      "matchManagers": ["npm"]
+    },
+    {
+      "description": "OpenTelemetry ecosystem",
+      "groupName": "opentelemetry",
+      "matchPackagePatterns": ["^@opentelemetry/", "^nestjs-otel"],
+      "matchManagers": ["npm"]
+    },
+    {
+      "description": "Biome linter",
+      "groupName": "biome",
+      "matchPackagePatterns": ["^@biomejs/"],
+      "matchManagers": ["npm"]
+    },
+    {
+      "description": "Apollo / GraphQL ecosystem",
+      "groupName": "graphql",
+      "matchPackagePatterns": [
+        "^@apollo/",
+        "^@graphql-codegen/",
+        "^@graphql-typed-document-node/",
+        "^graphql$"
+      ],
+      "matchManagers": ["npm"]
+    },
+    {
+      "description": "AWS SDK",
+      "groupName": "aws-sdk",
+      "matchPackagePatterns": ["^@aws-sdk/"],
+      "matchManagers": ["npm"]
+    },
+    {
+      "description": "CI Docker images",
+      "groupName": "ci-images",
+      "matchManagers": ["github-actions", "regex"]
+    },
+    {
+      "description": "Terraform providers",
+      "groupName": "terraform-providers",
+      "matchManagers": ["terraform", "terragrunt"]
+    },
+    {
+      "description": "Automerge patch-level devDependency bumps",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "Automerge patch-level CI image bumps",
+      "matchManagers": ["github-actions", "regex"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr"
+    }
+  ],
+  "regexManagers": [
+    {
+      "fileMatch": ["^\\.github/workflows/.*\\.ya?ml$"],
+      "matchStrings": [
+        "image:\\s*[\"']?(?<depName>[\\w.\\-/]+):(?<currentValue>[\\w.\\-]+)"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "fileMatch": ["^\\.github/workflows/.*\\.ya?ml$"],
+      "matchStrings": [
+        "amazon-ecr-credential-helper-releases.*?/(?<currentValue>[\\d.]+)/linux-amd64"
+      ],
+      "depNameTemplate": "awslabs/amazon-ecr-credential-helper",
+      "datasourceTemplate": "github-releases"
+    }
+  ]
+}

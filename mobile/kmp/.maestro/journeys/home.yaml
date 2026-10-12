@@ -1,0 +1,13 @@
+# Primary journey: launch → Home → open Details (type-safe route arg) → back to Home.
+# Cross-platform (no prefix): runs on both Android and iOS. Selects by visible text so it works
+# without the Android testTagsAsResourceId opt-in; testTag ids are also present on the controls.
+appId: com.monorepo.kmp
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Kotlin Multiplatform"
+- assertVisible: "Open details"
+- tapOn: "Open details"
+- assertVisible: "Details for kmp-42"
+- tapOn: "Back"
+- assertVisible: "Kotlin Multiplatform"

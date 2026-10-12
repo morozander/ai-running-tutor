@@ -1,0 +1,56 @@
+---
+description: Behavior that differs per environment must be env-driven — never hardcoded for the environment you happen to be testing in
+globs: "**/.env*,**/*.config.ts,**/vite-env.d.ts"
+alwaysApply: false
+---
+
+# Environment-Driven Configuration
+
+**Behavior that differs per environment must be env-driven, never hardcoded for the environment you happen to be testing in.**
+
+The deciding signal: *would ops or another environment need a DIFFERENT value without a code change?*
+
+- **If yes** → it's config: an env var / config service value, declared in `.env.example`, with the **safe default being the PRODUCTION posture** and the local/test override explicit.
+- **If no** (identical in every environment) → it's a code constant; don't ceremonialize it into config.
+
+Typical "yes" values: API URLs, auth flow types, OAuth client/pool ids, regions, feature gates, webhook bypass flags.
+
+## The incident this rule exists for
+
+e.g. (THIS repo): an Amplify `authFlowType` was hardcoded to `USER_PASSWORD_AUTH` to satisfy the local Cognito emulator — and silently downgraded PROD away from SRP. Every current rule passed it. The fix: the flow type is env-driven; the local emulator gets its value from local env config, prod keeps the secure default.
+
+**The meta-rule: a hardcode that exists to make local verification pass is a finding, not a convenience.** If you need a different value to run locally, that need IS the proof the value is environment-dependent.
+
+## Platform mechanisms (verify the real names — don't invent vars)
+
+| Stack | Mechanism | e.g. (THIS repo) |
+|---|---|---|
+| Web (Vite) | `import.meta.env.VITE_*` — declared in `frontend/src/vite-env.d.ts` + `.env.example` | `VITE_APP_API_URL` (not `VITE_GRAPHQL_URL` or other invented names) |
+| Mobile (Expo) | `process.env.EXPO_PUBLIC_*` — the `EXPO_PUBLIC_` prefix is **REQUIRED** for runtime availability; un-prefixed vars are not inlined into builds | `EXPO_PUBLIC_API_URL` in `src/api/client.ts` (a past incident here: the client read un-prefixed `process.env.HOST` while `.env.example` declared `HOST_URL` — the URL was undefined in real builds; both now aligned. Code and `.env.example` drift independently — keep them in the same diff) |
+| Backend (NestJS) | `ConfigService` / registered config namespaces (`src/config/`) | `cognito.config.ts` — never `process.env` reads scattered through feature code |
+
+## Typed env at the boundary (web)
+
+WHEN web code reads any env var → it goes through one module, `src/shared/config/env.ts`, that Zod-parses `import.meta.env` at module load and exports a typed `env` object. A missing or malformed var then fails the boot **with its name in the error** — not as an undefined-URL request minutes into a session.
+
+```ts
+// src/shared/config/env.ts
+import * as z from 'zod';
+
+const envSchema = z.object({
+  VITE_APP_API_URL: z.url(),          // e.g. (THIS repo) — full list lives in vite-env.d.ts
+  VITE_AWS_REGION: z.string().min(1),
+  VITE_AWS_USER_POOL_ID: z.string().min(1),
+  // ...one entry per declared VITE_* var
+});
+
+export const env = envSchema.parse(import.meta.env);
+```
+
+- `import.meta.env.*` reads outside this module are a reviewer red flag — e.g. (THIS repo): `frontend/src/graphql/client.ts` and `frontend/src/router/router.tsx` read it directly today; migrate reads to `env.` as they're touched.
+- The schema joins `.env.example` and `vite-env.d.ts` as a third copy of the var list — keep all three in the same diff. The parse failure is the drift detector the other two can't be.
+- `@t3-oss/env-*` does this for Next.js; in a Vite app a plain `z.object().parse` is the entire pattern — don't add a dependency for it.
+
+## Reviewer red flag
+
+Any literal inside `src/` that names an environment-specific resource (URL, pool id, flow type, region) — or any env var referenced in code but missing from `.env.example` (and vice versa: the two drift independently, check both directions).
