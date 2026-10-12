@@ -25,7 +25,7 @@ An uncapturable screen or missing Figma on a UI ticket is an escalation, never a
 
 ## Severity rule — brand-fidelity gaps LOOP, they don't soft-defer
 
-A **brand element confirmed by the ticket's design** (present in the cached Figma frame) that is MISSING or wrong is a **`fixable`** `design_parity` finding that MUST LOOP back to `/implement` (loop cap 3). It is **NOT** a soft `needs-scope-decision` deferral. The general rule: *anything the confirmed design shows but the render lacks (or renders wrong) loops back to be fixed.* This covers, for example:
+A **brand element confirmed by the ticket's design** (present in the cached Figma frame) that is MISSING or wrong is a **`fixable`** `design_parity` finding that MUST LOOP back to `/implement-plan` (loop cap 3). It is **NOT** a soft `needs-scope-decision` deferral. The general rule: *anything the confirmed design shows but the render lacks (or renders wrong) loops back to be fixed.* This covers, for example:
 
 - a **brand background / pattern / gradient** rendered as a flat color instead of the branded surface the design specifies (e.g. a lavender 'Bg pattern' gradient flattened to a single fill),
 - a **missing branded splash screen**,

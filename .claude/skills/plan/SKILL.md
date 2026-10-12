@@ -85,8 +85,8 @@ Task(
            Follow the constraints in .claude/agents/planner.md.
            Classify each task: code | foundation | migration | environment | iaac.
            Foundation tasks come first in the DAG.
-           Environment tasks go in plan but NOT implemented by /implement —
-           they flow into /handoff's Deployment Prerequisites section.
+           Environment tasks go in plan but NOT implemented by /implement-plan —
+           they flow into /open-mr's Deployment Prerequisites section.
            Populate an 'Affected Packages' list for the plan, and for each UI task name
            the target screen(s)/route(s). These are consumed downstream by build-check,
            runtime-smoke, and design-parity — do not leave them blank on UI work.

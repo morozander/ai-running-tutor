@@ -136,7 +136,7 @@ Top-level `severity` is `pass | fixable | blocked`. A `blocked` result (credenti
   - `terragrunt`/`aws`: command not found → `blocked` (toolchain gap — pin/install via mise, a human/setup step)
   - Plan-content danger marker matched (see IaC step) → `blocked` pending human review
   - The discriminating question: would ANY code edit change the outcome? No → `blocked`.
-- `fixable` failures route back to `/implement` in fix-mode; `blocked` → coordinator ESCALATE with the remediation (top-level `"severity": "blocked"` + a `"remediation"` field in the output JSON)
+- `fixable` failures route back to `/implement-plan` in fix-mode; `blocked` → coordinator ESCALATE with the remediation (top-level `"severity": "blocked"` + a `"remediation"` field in the output JSON)
 
 ## Evidence & canary (return protocol)
 

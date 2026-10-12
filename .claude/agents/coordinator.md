@@ -87,14 +87,14 @@ Build a flat list across all verifiers with:
 | `ac_unmet` | fixable | 3 | Loop until cap; if cap hit, spec is likely wrong → escalate |
 | `convention_violation` | fixable | 5 | Loop until cap |
 | `design_parity` | fixable | 3 | Loop until cap |
-| `design_parity` (brand-fidelity: a branded surface the confirmed design depends on is missing/flattened — e.g. brand background/pattern, branded splash screen, logo/wordmark glyph, required provider button icons) | fixable | 3 | Loop to `/implement` until cap — do NOT park as a soft "needs-scope-decision" non-blocker. These are unbuilt branded surfaces (derived from the design, whatever they are for this ticket), not open questions. Only escalate the gap when it is a genuine **AC-conflict** or a **new-product-decision** (a decision nobody has made yet), never merely because the surface is unbuilt. |
+| `design_parity` (brand-fidelity: a branded surface the confirmed design depends on is missing/flattened — e.g. brand background/pattern, branded splash screen, logo/wordmark glyph, required provider button icons) | fixable | 3 | Loop to `/implement-plan` until cap — do NOT park as a soft "needs-scope-decision" non-blocker. These are unbuilt branded surfaces (derived from the design, whatever they are for this ticket), not open questions. Only escalate the gap when it is a genuine **AC-conflict** or a **new-product-decision** (a decision nobody has made yet), never merely because the surface is unbuilt. |
 | `build_failure` | fixable | 5 | Loop until cap |
 | `runtime_failure` | fixable | 3 | App fails to boot/bundle/render — loop until cap (e.g. toolchain, missing dep, metro/vite config) |
 | `human_blocker` | blocked | 0 | ESCALATE with remediation — the workflow CANNOT fix it (e.g. Docker/DB down, missing cloud/store creds, an external-auth/3rd-party provider with no local emulator AND no real test creds in env, so the affected ACs can't be exercised) |
 | `security_finding` (fixable subclass) | fixable | 1 | One loop, then escalate |
 | `security_finding` (critical, after deep-review) | critical | 0 | Escalate immediately |
 | `architectural_concern` | architectural | 0 | Escalate immediately |
-| `process_gap` (TS-heavy cross-file navigation reported with `lsp.calls: 0` and no genuine non-TS justification — see Upgrade A) | fixable | 1 | Loop once by re-dispatching the flagged verifier to re-navigate via `LSP` — NOT a `/implement` code fix; a process defect, not a code defect |
+| `process_gap` (TS-heavy cross-file navigation reported with `lsp.calls: 0` and no genuine non-TS justification — see Upgrade A) | fixable | 1 | Loop once by re-dispatching the flagged verifier to re-navigate via `LSP` — NOT a `/implement-plan` code fix; a process defect, not a code defect |
 | `hallucination_flag` (a failure recorded in `verify/integrity.json` — malformed/nonexistent SHA, absent artifact, missing/altered canary that persists after re-dispatch — or a count that contradicts a coordinator judgment re-check) | blocked | 0 | Evidence untrusted → the work is re-done (re-dispatch) or ESCALATED; never PASS/LOOP on the unverified claim |
 | `info` | info | n/a | Log, don't act |
 
@@ -155,12 +155,12 @@ elif safety_skipped:
 elif fixable findings present AND no retry caps exceeded AND NOT ceiling_reached:
   DECISION = LOOP
   → set state.phase = "verifying" → "fixing"
-  → write state.verify_findings (fixes /implement will apply)
+  → write state.verify_findings (fixes /implement-plan will apply)
   → increment retry counter for each finding category
   → increment state.iterations.verify_loops by 1 (and fix_dispatches when the driver dispatches the fix)
   → set fix_routing[].rerun_verifiers = only the verifier(s) whose findings were fixed,
     PLUS always `build-check` + `runtime-smoke` (regression guard). Do NOT request a full 6-verifier re-run.
-  → return to driver, which dispatches /implement in fix-mode
+  → return to driver, which dispatches /implement-plan in fix-mode
 
 elif fixable findings present AND ceiling_reached:
   DECISION = ESCALATE
@@ -177,7 +177,7 @@ elif no findings (or all info-only) AND ac_coverage 100% AND no safety_skipped:
   → set state.phase = "verifying" → "review-ready"
 ```
 
-A `process_gap` (TS-navigation-with-0-LSP) is a `fixable`-class LOOP, but it routes DIFFERENTLY from a code fix: instead of dispatching `/implement`, add the flagged verifier to `fix_routing[].rerun_verifiers` with an instruction to re-navigate the `.ts/.tsx` symbols via the `LSP` tool and re-report a non-zero `lsp.calls` (or a genuine non-TS justification). Cap 1 — it's a process correction, not a code defect.
+A `process_gap` (TS-navigation-with-0-LSP) is a `fixable`-class LOOP, but it routes DIFFERENTLY from a code fix: instead of dispatching `/implement-plan`, add the flagged verifier to `fix_routing[].rerun_verifiers` with an instruction to re-navigate the `.ts/.tsx` symbols via the `LSP` tool and re-report a non-zero `lsp.calls` (or a genuine non-TS justification). Cap 1 — it's a process correction, not a code defect.
 
 ### 5. Update state + write coordinator report
 
@@ -253,8 +253,8 @@ Always write `.agentic/plans/<TICKET>/verify/coordinator.json`:
 ### 6. Return to driver
 
 Return one of:
-- `PASS` → driver advances state to `review-ready`, calls `/handoff` next
-- `LOOP` → driver calls `/implement` in fix-mode with the routing data, then re-runs only the verifiers listed in `fix_routing[].rerun_verifiers`
+- `PASS` → driver advances state to `review-ready`, calls `/open-mr` next
+- `LOOP` → driver calls `/implement-plan` in fix-mode with the routing data, then re-runs only the verifiers listed in `fix_routing[].rerun_verifiers`
 - `ESCALATE` → driver pauses, surfaces the coordinator report to the dev (including the iteration-ceiling case, where the dev decides whether to approve more loops)
 
 ## Anti-pattern guard
@@ -269,7 +269,7 @@ If the loop has run 3 times and findings are toggling (one verifier fixes, anoth
 - ❌ Don't suppress info findings (log them for the handoff MR description)
 - ❌ Don't loop without incrementing retry counters (and `state.iterations.verify_loops`)
 - ❌ Don't escalate on first fixable finding — that's what the loop is for
-- ❌ Don't park `design_parity` brand-fidelity gaps (a branded surface the confirmed design depends on is missing/flattened — e.g. brand background/pattern, splash, logo glyph, required icons) as soft "needs-scope-decision" — LOOP them to `/implement` (cap 3); escalate only on a true AC-conflict / new-product-decision
+- ❌ Don't park `design_parity` brand-fidelity gaps (a branded surface the confirmed design depends on is missing/flattened — e.g. brand background/pattern, splash, logo glyph, required icons) as soft "needs-scope-decision" — LOOP them to `/implement-plan` (cap 3); escalate only on a true AC-conflict / new-product-decision
 - ❌ Don't loop past `state.max_verify_loops` — when the ceiling would be exceeded, ESCALATE for dev approval (honest iteration cap, not a $ budget)
 - ❌ Don't request a full 6-verifier re-run on a fix-loop — re-run only the fixed verifier(s) + `build-check` + `runtime-smoke`
 - ❌ Don't approve `PASS` with any `critical` or `architectural` findings present

@@ -119,7 +119,7 @@ Alongside your concise summary, your return MUST include:
 
 ## Hard rules
 
-- ❌ Don't fix issues yourself — coordinator routes to /implement
+- ❌ Don't fix issues yourself — coordinator routes to /implement-plan
 - ❌ Don't dismiss a finding because "it's just dev environment"
 - ❌ Don't classify hardcoded secrets as anything below critical
 - ❌ Don't suppress new dependencies — always surface them

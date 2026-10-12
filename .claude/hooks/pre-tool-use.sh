@@ -89,7 +89,7 @@ phase=$(state_phase_for_branch "$branch")
 re_pos='(^|[;&|]|\$\(|`|-c[[:space:]]+["'"'"']|--[[:space:]])[[:space:]]*'
 
 # Rule 0: refuse IaC mutation from the workflow (guardrail, not a wall — see header).
-# Infrastructure changes are human-only deployment steps surfaced in /handoff's
+# Infrastructure changes are human-only deployment steps surfaced in /open-mr's
 # Deployment Prerequisites. `validate` and `plan` are allowed; `apply`, `destroy`,
 # `import`, `state rm` (and the cdk/pulumi equivalents) are not.
 # The trailing [^[:alnum:]_-] anchor means `apply;`, `apply&&`, `apply"` etc. still match;
@@ -98,7 +98,7 @@ re_iac="${re_pos}"'(terragrunt|terraform|tofu)([[:space:]]+[^|;&]*)?[[:space:]]+
 re_iac_staterm="${re_pos}"'(terragrunt|terraform|tofu)([[:space:]]+[^|;&]*)?[[:space:]]+state[[:space:]]+rm'
 re_iac_cdkpulumi="${re_pos}"'(cdk|pulumi)([[:space:]]+[^|;&]*)?[[:space:]]+(deploy|destroy|up|import|refresh)([^[:alnum:]_-]|$)'
 if [[ "$command" =~ $re_iac ]] || [[ "$command" =~ $re_iac_staterm ]] || [[ "$command" =~ $re_iac_cdkpulumi ]]; then
-  block_with_reason "Refusing IaC mutation (apply/destroy/import/state rm — terraform/terragrunt/tofu/cdk/pulumi). The spec-driven workflow does not mutate infrastructure — these are human deployment steps listed in /handoff's Deployment Prerequisites. Only 'validate' and 'plan' are permitted. (This hook is a guardrail, not a security boundary.)"
+  block_with_reason "Refusing IaC mutation (apply/destroy/import/state rm — terraform/terragrunt/tofu/cdk/pulumi). The spec-driven workflow does not mutate infrastructure — these are human deployment steps listed in /open-mr's Deployment Prerequisites. Only 'validate' and 'plan' are permitted. (This hook is a guardrail, not a security boundary.)"
 fi
 
 # Rule 1: block MR/PR creation outside review-ready phase — the CLI form (global
@@ -120,7 +120,7 @@ if [[ "$command" =~ $re_mr_cli ]] \
    || { [[ "$command" =~ $re_mr_api ]] && [[ "$command" =~ $re_api_mutation ]] && { [[ "$command" =~ $re_mr_collection ]] || [[ "$command" =~ $re_mr_graphql ]]; }; } \
    || { [[ "$command" =~ $re_curl ]] && [[ "$command" =~ $re_curl_mutation ]] && { [[ "$command" =~ $re_mr_collection ]] || [[ "$command" =~ $re_mr_graphql ]]; }; }; then
   if [[ "$phase" != "review-ready" && "$phase" != "done" ]]; then
-    block_with_reason "Cannot open MR/PR — workflow phase is '$phase', expected 'review-ready'. Use /work to advance through /verify first, or use /handoff --skip-verify if you really mean to skip verification (not recommended)."
+    block_with_reason "Cannot open MR/PR — workflow phase is '$phase', expected 'review-ready'. Use /work to advance through /verify first, or use /open-mr --skip-verify if you really mean to skip verification (not recommended)."
   fi
 fi
 

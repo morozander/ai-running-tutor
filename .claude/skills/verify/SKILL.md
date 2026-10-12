@@ -92,7 +92,7 @@ Then determine **whether this is the FIRST verify or a fix-loop re-verify**, and
 state.iterations          ||= { verify_loops: 0, fix_dispatches: 0 }
 state.max_verify_loops    ||= 3
 is_reverify = state.verify_findings exists AND state.fix_routing (or state.verify_findings) is non-empty
-              # i.e. a prior verify produced a LOOP and /implement has since run in fix-mode
+              # i.e. a prior verify produced a LOOP and /implement-plan has since run in fix-mode
 
 if is_reverify AND state.iterations.verify_loops >= state.max_verify_loops:
   # Surface the iteration-ceiling gate (per coordinator) and PAUSE — do NOT dispatch another wave.
@@ -108,7 +108,7 @@ if is_reverify AND state.iterations.verify_loops >= state.max_verify_loops:
      Options:
        • reply 'raise ceiling N' to set max_verify_loops and continue
        • inspect .agentic/plans/<TICKET>/verify/coordinator.json and fix manually, then 're-verify'
-       • mark as accepted-risk and continue to /handoff (records the gap in the MR)"
+       • mark as accepted-risk and continue to /open-mr (records the gap in the MR)"
   # This pause returns BEFORE §6a ever runs, so surface the ledger HERE: read
   # .agentic/plans/<TICKET>/verify/runtime-ledger.json and list every live entry with its
   # teardown one-liner (ledger empty/absent → say "nothing left running"). Per
@@ -328,13 +328,13 @@ Task(subagent_type: "coordinator", prompt:
 read verify/coordinator.json
 
 if decision == "PASS":
-  state.phase = "verifying" → "review-ready"; return — driver advances to /handoff
+  state.phase = "verifying" → "review-ready"; return — driver advances to /open-mr
 
 elif decision == "LOOP":
   state.phase = "verifying" → "fixing"
   state.verify_findings = coordinator.fix_routing
   state.verify_retries  = coordinator.retry_counts
-  return — driver dispatches /implement in fix-mode
+  return — driver dispatches /implement-plan in fix-mode
 
 elif decision == "ESCALATE":
   state.phase stays "verifying" (paused)
@@ -350,7 +350,7 @@ elif decision == "ESCALATE":
    Options:
      • clear the blocker and reply 're-verify'  (e.g. `mise run docker-up` then continue)
      • <suggested fix actions if any>
-     • mark as accepted-risk and continue to /handoff (records the gap in the MR)"
+     • mark as accepted-risk and continue to /open-mr (records the gap in the MR)"
   return — driver pauses for dev input
 ```
 
@@ -358,7 +358,7 @@ elif decision == "ESCALATE":
 
 Read `.agentic/plans/<TICKET>/verify/runtime-ledger.json` — everything the verifiers (and earlier phases) started for this ticket. The coordinator decision picks the disposition; the signal is whether the flow comes back:
 
-- **PASS** (moving forward to /handoff) → tear down every ledger entry via its recorded teardown command, confirm gone (port probe / `docker ps`), clear the ledger. An entry that is already dead = confirm gone + clear it, not an error (a crashed verifier leaves stale entries). Never touch anything not in the ledger.
+- **PASS** (moving forward to /open-mr) → tear down every ledger entry via its recorded teardown command, confirm gone (port probe / `docker ps`), clear the ledger. An entry that is already dead = confirm gone + clear it, not an error (a crashed verifier leaves stale entries). Never touch anything not in the ledger.
 - **LOOP** (returning to re-verify after fixes) → leave ledgered services UP for reuse — the re-verify reuses them instead of stacking duplicates (re-booting costs more than keeping them). Note `kept for re-verify: <list>` in the status output.
 - **ESCALATE** (a human will inspect) → leaving the environment up is the RIGHT call so the dev can reproduce the failure live — but the pause message MUST include the "Left running for your inspection" block above. Never leave something running silently — left-up is a deliberate, reported state, not a default.
 
@@ -371,7 +371,7 @@ See `.claude/agents/coordinator.md` for the full matrix. Summary:
 | Severity | Behavior |
 |---|---|
 | `info` | Log, don't act |
-| `fixable` | LOOP back to /implement (until cap) |
+| `fixable` | LOOP back to /implement-plan (until cap) |
 | `blocked` (human_blocker) | ESCALATE with remediation — NOT a code loop |
 | `critical` | ESCALATE immediately |
 | `architectural` | ESCALATE immediately |
@@ -398,14 +398,14 @@ If invoked directly (not via /work) on a branch without active state: refuse unl
 
 Runtime boots are heavier than static checks; scope-awareness keeps them bounded (only affected packages boot, and a fix-loop re-verify re-runs only the fixed verifiers + build-check + runtime-smoke). The real, *trackable* guard against runaway loops is the iteration ceiling in state — **not** a dollar budget the workflow cannot actually measure.
 
-`state.iterations` tracks `{ verify_loops, fix_dispatches }`; `state.max_verify_loops` defaults to **3**. Each verify pass increments `verify_loops` (see §Pre-flight). Before a fix-loop re-verify, if `verify_loops >= max_verify_loops`, surface the iteration-ceiling gate (per coordinator) and pause for dev approval — the dev may `raise ceiling N`, fix manually, or accept-risk and continue to /handoff.
+`state.iterations` tracks `{ verify_loops, fix_dispatches }`; `state.max_verify_loops` defaults to **3**. Each verify pass increments `verify_loops` (see §Pre-flight). Before a fix-loop re-verify, if `verify_loops >= max_verify_loops`, surface the iteration-ceiling gate (per coordinator) and pause for dev approval — the dev may `raise ceiling N`, fix manually, or accept-risk and continue to /open-mr.
 
 A rough dollar estimate MAY be shown for awareness, but it is an estimate only and is **never** treated as an enforced budget:
 
 ```
 ⏸ Iteration ceiling reached: verify_loops 3 / 3. (Rough estimate only, not enforced: ~$8.90 so far.)
 Left running for your inspection: frontend preview :4174 (kill 48212), postgres (docker compose stop db && docker compose rm -f db)
-Reply 'raise ceiling 5' to continue, fix manually then 're-verify', or accept-risk → /handoff.
+Reply 'raise ceiling 5' to continue, fix manually then 're-verify', or accept-risk → /open-mr.
 ```
 Wait for dev reply (this pause happens before §6a, so the ledger is surfaced here — see §1).
 
@@ -415,7 +415,7 @@ Wait for dev reply (this pause happens before §6a, so the ledger is surfaced he
 - ❌ Aggregating before all verifiers return.
 - ❌ Coordinator deciding PASS while any `critical`/`architectural` finding stands, while a `human_blocker` is unresolved, or while a safety verifier was `skipped`/`inconclusive` on a runtime/UI ticket.
 - ❌ Suppressing critical findings because the dev seems annoyed.
-- ❌ Pushing fixes through without /implement (fixes go through TDD too).
+- ❌ Pushing fixes through without /implement-plan (fixes go through TDD too).
 - ❌ Running any verifier outside the pinned toolchain (its green wouldn't be representative).
 - ❌ Looping past retry caps without dev approval.
 - ❌ Ending a verify pass without disposing of the runtime ledger per the coordinator decision — teardown (PASS), kept-for-reuse (LOOP), or reported-left-running (ESCALATE / iteration-ceiling pause). See §6a + `.agentic/rules/_shared/leave-no-trace.md`.

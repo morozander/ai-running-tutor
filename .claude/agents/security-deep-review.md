@@ -64,7 +64,7 @@ Write `.agentic/plans/<TICKET>/verify/security-deep.json`:
 
 ## Decision values
 
-- `loop` — finding is fixable; coordinator routes to `/implement` in fix-mode with the minimum_fix
+- `loop` — finding is fixable; coordinator routes to `/implement-plan` in fix-mode with the minimum_fix
 - `escalate-to-human` — finding needs dev sign-off (architectural risk, auth design choice, etc.)
 - `downgrade` — original was false positive; mark as info and continue
 

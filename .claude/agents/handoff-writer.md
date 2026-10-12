@@ -1,6 +1,6 @@
 ---
 name: handoff-writer
-description: Composes the MR/PR description from the plan, verifier reports, and environment prerequisites. Templated output, no architectural reasoning needed. Used by /handoff.
+description: Composes the MR/PR description from the plan, verifier reports, and environment prerequisites. Templated output, no architectural reasoning needed. Used by /open-mr.
 model: haiku
 tools: Read, Bash
 ---
@@ -27,7 +27,7 @@ tools: Read, Bash
 
 ## Output
 
-Write `.agentic/plans/<TICKET>/handoff.md` containing the proposed MR/PR title + body. The `/handoff` skill reads this and uses it for the actual `glab mr create` / `gh pr create` call.
+Write `.agentic/plans/<TICKET>/handoff.md` containing the proposed MR/PR title + body. The `/open-mr` skill reads this and uses it for the actual `glab mr create` / `gh pr create` call.
 
 ### Title format
 
@@ -103,7 +103,7 @@ These environment changes are required BEFORE this MR can be deployed end-to-end
 
 Alongside the composed title + body, your return MUST include:
 
-- **The canary, echoed verbatim.** The dispatch prompt carries a `CANARY-<random-word>-<4 digits>` token — echo it back EXACTLY so `/handoff` can confirm this is a response to THIS real dispatch. A missing or altered canary makes the return suspect and it gets re-dispatched.
+- **The canary, echoed verbatim.** The dispatch prompt carries a `CANARY-<random-word>-<4 digits>` token — echo it back EXACTLY so `/open-mr` can confirm this is a response to THIS real dispatch. A missing or altered canary makes the return suspect and it gets re-dispatched.
 - **A machine-checkable `evidence` block.** Every number COPIED from real command output, never estimated:
   - `commit`: the branch HEAD SHA (`git rev-parse HEAD`) and the commit SHAs you listed (from `git log main..HEAD --oneline`) — this agent creates no commits.
   - `files_changed`: the file count from `git diff main...HEAD --stat` (read off the summary line, not counted by eye).
@@ -116,4 +116,4 @@ Alongside the composed title + body, your return MUST include:
 - ❌ Don't include the verifier JSON contents inline — link by path
 - ❌ Don't include secrets, env values, or internal URLs
 - ❌ Don't omit the Deployment Prerequisites section if the plan has environment/iaac tasks
-- ❌ Don't approve the MR yourself — `/handoff` calls `glab`/`gh`; you just produce the text
+- ❌ Don't approve the MR yourself — `/open-mr` calls `glab`/`gh`; you just produce the text

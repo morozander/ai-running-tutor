@@ -11,7 +11,8 @@ and adjust four stack-heavy files.
 
 | Path | Action |
 |---|---|
-| `.claude/skills/` (all 11) | **copy, then adjust** — package names + a few stack commands (see checklist) |
+| `.claude/skills/` (workflow kernel) | **copy, then adjust** — the ticket-flow skills (`work`, `start`, `plan`, `implement-plan`, `verify`, `open-mr`, plus standalone `brainstorm`/`debug`/`explore`/`lint-ticket`/`using-workflow`). Package names + a few stack commands (see checklist) |
+| `.claude/skills/` (engineering / Matt) | **optional** — `/ask-matt` flow (`grill-*`, `to-spec`, `to-tickets`, `implement`, `handoff`, `triage`, `tdd`, …) plus `.claude/commands/` and `docs/agents/`; skip if you only want the Jira ticket workflow |
 | `.claude/agents/` (all 13) | **copy, then adjust** — 2 verifier files carry most stack coupling |
 | `.claude/hooks/` (5 scripts) | **copy as-is** — dual-format (Claude Code + Cursor), repo-agnostic; teams without IaC simply never trigger the IaC rule |
 | `.claude/settings.json` | **copy, then adjust** — keep hooks/plugins/marketplace blocks; rewrite the `permissions.allow` command list for your package manager |

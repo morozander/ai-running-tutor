@@ -29,7 +29,7 @@
 // shas:        each argument must LOOK like a commit SHA (7-40 hex chars — a
 //              ref name or "HEAD" is not evidence) AND resolve to an existing
 //              commit object. The driver's re-check for non-verify sub-skill
-//              returns (/implement, /handoff).
+//              returns (/implement-plan, /open-mr).
 //
 // FAIL CLOSED: a SHA-shaped claim that is malformed is a failure, not a skip —
 // otherwise a fabricated "HEAD"/"ABC..." would sail through the very gate that
@@ -181,7 +181,7 @@ function checkCoordinator(verifyDir, canary) {
     fail('coordinator', 'missing_evidence_recheck', 'no evidence_recheck block — the coordinator must record its judgment checks');
   }
   if (report.decision === 'LOOP' && !(Array.isArray(report.fix_routing) && report.fix_routing.length > 0)) {
-    fail('coordinator', 'loop_without_routing', 'decision is LOOP but fix_routing is empty — nothing for /implement fix-mode to apply');
+    fail('coordinator', 'loop_without_routing', 'decision is LOOP but fix_routing is empty — nothing for /implement-plan fix-mode to apply');
   }
   if (report.decision === 'ESCALATE' && !report.escalation_reason) {
     fail('coordinator', 'escalate_without_reason', 'decision is ESCALATE but escalation_reason is empty');

@@ -103,6 +103,25 @@ code . / cursor .                # IDE launched from a shell that has the env
 
 See [.claude/ONBOARDING.md](../.claude/ONBOARDING.md) for the full walkthrough and troubleshooting (both harnesses).
 
+## Agent skills
+
+Two skill systems coexist under [`.claude/skills/`](../.claude/skills/):
+
+- **Ticket workflow (`/work`)** — Jira-driven: start → plan → implement-plan → verify → open-mr. Entry: `/work PROJ-XXX`. See [using-workflow](../.claude/skills/using-workflow/SKILL.md).
+- **Engineering skills (`/ask-matt`)** — idea → grill → spec/tickets → implement → retro. Router: `/ask-matt`. Issues live as local markdown under `.scratch/`.
+
+### Issue tracker
+
+Local markdown under `.scratch/<feature>/`. See [`docs/agents/issue-tracker.md`](../docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Canonical roles as `Status:` lines on issue files. See [`docs/agents/triage-labels.md`](../docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` + `docs/adr/` (created lazily via `/grill-with-docs`). See [`docs/agents/domain.md`](../docs/agents/domain.md).
+
 ## House tone (easter eggs — optional; a team that wants it strictly neutral can delete this section)
 
 These shape ONLY the conversational + status text the assistant shows the developer in chat. They must **NEVER** appear in anything committed or outward-facing — code, comments, commit messages, branch names, PR/MR descriptions, Jira comments, design notes, or verifier report JSON all stay strictly professional. Flavor never delays, softens, or obscures a real finding, a status, or a refusal to pass blind.

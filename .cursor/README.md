@@ -9,6 +9,7 @@ config lives here. Verified against cursor.com/docs on 2026-07-08 (Cursor 3.x).
 | Surface | Source | How Cursor gets it |
 |---|---|---|
 | Skills (`/work`, `/start`, `/plan`, …) | `.claude/skills/` | native compat path — loaded as-is, do NOT copy here |
+| Slash commands (engineering skills) | `.claude/commands/` | Claude Code + Cursor compat — authored here; no `.agents/` link step |
 | Subagents | `.claude/agents/` (source) | **generated** → [agents/](./agents/) by `.agentic/scripts/sync.ts` (model aliases → Cursor slugs; `.cursor/agents` wins name conflicts) |
 | Rules | `.agentic/rules/**` | **generated** → [rules/](./rules/) by the same sync script |
 | Repo context | `.agentic/AGENTS.md` | root `AGENTS.md` symlink (read natively) |

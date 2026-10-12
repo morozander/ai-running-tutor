@@ -11,7 +11,7 @@ description: Meta-skill that enforces the spec-driven workflow. Auto-loaded by S
 
 ## Core principle
 
-Tickets move through a defined sequence: `start → plan → plan-review (human) → implement → verify → handoff`. The dev does NOT pick which sub-skill to invoke; **the driver skill `/work` reads the state and dispatches automatically.**
+Tickets move through a defined sequence: `start → plan → plan-review (human) → implement-plan → verify → open-mr`. The dev does NOT pick which sub-skill to invoke; **the driver skill `/work` reads the state and dispatches automatically.**
 
 ## Decision tree on every dev request
 
@@ -33,9 +33,9 @@ Tickets move through a defined sequence: `start → plan → plan-review (human)
 
 - "Let's start PROJ-123" → `/work PROJ-123`
 - "What's next?" / "Continue" / "Move on" → `/work`
-- "Implement the next task" → `/work` (don't bypass to `/implement` directly)
+- "Implement the next task" → `/work` (don't bypass to `/implement-plan` directly)
 - "Run the checks" → `/work` (don't bypass to `/verify` directly)
-- "Open the MR" → `/work` (don't bypass to `/handoff` directly)
+- "Open the MR" → `/work` (don't bypass to `/open-mr` directly)
 
 ## When standalone skills are OK
 
@@ -61,7 +61,7 @@ The dev can override: *"Skip the workflow, just edit this file."* You then make 
 |---|---|
 | Run `/plan` directly during `implementing` phase | Run `/work` — it advances per state |
 | Make commits during `verifying` if verifier hasn't run | Run `/work` — verify gates the commit |
-| Open a PR with `gh pr create` outside `/handoff` | Run `/work` — handoff handles it |
+| Open a PR with `gh pr create` outside `/open-mr` | Run `/work` — open-mr handles it |
 | Update the state file by hand | Let the skills update it (they own the schema) |
 | Skip `/work` because "I know what's next" | Even if you know, `/work` ensures hooks fire and state is consistent |
 
@@ -99,9 +99,9 @@ This workflow may invoke Superpowers primitives internally:
 
 - `superpowers:brainstorming` — used by `/brainstorm` and during `/start` if ticket has open questions
 - `superpowers:writing-plans` — used by `/plan` as a building block
-- `superpowers:subagent-driven-development` — used by `/implement` for fresh-context per task
-- `superpowers:test-driven-development` — enforced inside `/implement`
-- `superpowers:verification-before-completion` — used as the evidence gate before `/handoff`
+- `superpowers:subagent-driven-development` — used by `/implement-plan` for fresh-context per task
+- `superpowers:test-driven-development` — enforced inside `/implement-plan`
+- `superpowers:verification-before-completion` — used as the evidence gate before `/open-mr`
 - `superpowers:systematic-debugging` — used by `/debug` standalone
 
 Don't call them directly from a dev request — call our skills, which compose them.

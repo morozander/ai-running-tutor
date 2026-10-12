@@ -49,7 +49,7 @@ if state_file=$(find_state_for_branch "$branch"); then
   ticket=$(jq -r '.ticket' "$state_file")
   phase=$(jq -r '.phase' "$state_file")
   context_msg="[workflow] Active ticket: ${ticket} (branch: ${branch}, phase: ${phase}).
-Use /work to advance the workflow. Do not call sub-skills (/plan, /implement, /verify, /handoff) directly unless explicitly asked for standalone use."
+Use /work to advance the workflow. Do not call sub-skills (/plan, /implement-plan, /verify, /open-mr) directly unless explicitly asked for standalone use."
 else
   context_msg="[workflow] No active ticket on branch '${branch}'.
 - For ticket work: /work PROJ-XXX to start a new ticket
@@ -67,7 +67,7 @@ fi
 if [[ -n "${CURSOR_VERSION:-}" ]]; then
   if ! ls "$HOME"/.cursor/plugins/cache/*/superpowers/*/ >/dev/null 2>&1 \
      && [[ ! -e "$HOME/.cursor/plugins/local/superpowers" ]]; then
-    context_msg+=$'\n\n'"[setup] The 'superpowers' plugin is not installed in this Cursor. /brainstorm, /debug and the TDD enforcement in /implement delegate to its skills — tell the dev to run: /add-plugin superpowers (one-time per machine; see .cursor/README.md)."
+    context_msg+=$'\n\n'"[setup] The 'superpowers' plugin is not installed in this Cursor. /brainstorm, /debug and the TDD enforcement in /implement-plan delegate to its skills — tell the dev to run: /add-plugin superpowers (one-time per machine; see .cursor/README.md)."
   fi
 fi
 

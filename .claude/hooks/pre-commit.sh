@@ -7,7 +7,7 @@
 #   2. State file is well-formed if exists for current branch (blocks on invalid JSON)
 #   3. Phase consistency — WARNS (does not block) when committing in 'review-ready'/'done',
 #      since that invalidates the verify verdict and a new /verify cycle will be needed.
-#      Commits during 'verifying' are expected (/implement fix-mode) and allowed silently.
+#      Commits during 'verifying' are expected (/implement-plan fix-mode) and allowed silently.
 #
 # These are guardrails against a confused agent, not a security boundary — a determined
 # command can bypass a regex or hook (--no-verify). The enforced path is code review + CI.
@@ -83,7 +83,7 @@ check_state() {
       phase=$(jq -r '.phase' "$f")
 
       # Rule: phase == 'verifying' means /verify is mid-flight; commits during this phase
-      # are usually from /implement --fix-mode, which is OK. But naked commits aren't.
+      # are usually from /implement-plan --fix-mode, which is OK. But naked commits aren't.
       # If --no-verify flag is set, skip the check.
       if [[ "$phase" == "review-ready" || "$phase" == "done" ]]; then
         warn "Phase is '$phase' — committing now will require a new /verify cycle"

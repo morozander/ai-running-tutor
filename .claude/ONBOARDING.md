@@ -25,9 +25,9 @@ Total time: ~10 min one-time. Harness-specific steps: [In Claude Code](#in-claud
 |---|---|---|---|
 | Start | `/start TICKET` | Fetches ticket from Jira, validates DoR, fetches Figma, checks design completeness | Only if validation fails — dev clarifies |
 | Plan | `/plan` (auto) | Explorer subagent maps relevant code; planner writes `plan.md` with bounded tasks | ✅ **Dev reviews plan** |
-| Implement | `/implement` (auto) | Subagent-per-task with TDD; commits per task | No |
+| Implement | `/implement-plan` (auto) | Subagent-per-task with TDD; commits per task | No |
 | Verify | `/verify` (auto) | Wave 1: `qa` + `code-review` + `security` + `build-check` + `runtime-smoke` (records the driven journey) in parallel; wave 2: `design-parity` captures the route × theme matrix + compares to Figma (roster defined in `verify/SKILL.md`) | No (coordinator routes fixes back) |
-| Handoff | `/handoff` (auto) | Opens MR (GitLab) or PR (GitHub) with structured description | ✅ **Code review by teammate** |
+| Handoff | `/open-mr` (auto) | Opens MR (GitLab) or PR (GitHub) with structured description | ✅ **Code review by teammate** |
 
 The single command devs use day-to-day is `/work`. It runs **continuously** — one invocation drives through every phase until it hits a human gate. Expect roughly **two `/work` calls** for a clean ticket:
 

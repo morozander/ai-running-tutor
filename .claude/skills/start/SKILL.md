@@ -115,7 +115,7 @@ Passing the required-fields table only means the ticket is *well-formed* — not
 - **Dead-end flows** — a scoped path that leaves the user stuck. e.g. a sign-up with no confirmation/verification step leaves accounts UNCONFIRMED and unable to log in; a "create" with no way to view/edit the result; a multi-step flow missing the step that commits it. Ask whether the missing step is genuinely out of scope (then a follow-up ticket should exist) or an oversight.
 - **Environment-coupled assumptions** — work that only functions against a non-production substitute and silently won't work for real. e.g. behavior that only works against a local emulator/mock and has no real-provider path; a feature gated on seed data, a dev-only flag, or a local-only endpoint. Never imply a local-emulator/mock path is the real/prod path.
 - **External-service / auth testability** — when ACs depend on an external provider (auth, payments, email, etc.), DETECT how they can actually be verified and flag if they can't: (a) a local emulator/service is configured (e.g. a cognito-local service + a local endpoint env — ONE example for this repo, not the universal rule) → it can be exercised locally; (b) real provider creds + a usable test account are present in env → it can be verified against the real provider; (c) neither present → surface a **human_blocker** naming exactly which ACs will be UNVERIFIED. Don't treat (a) as equivalent to the production path.
-- **Security posture / data-access / contract decisions are RESOLVED here, not parked.** A question like *"is this endpoint guarded or public?"*, *"who may read/write this data?"*, or any contract choice with security or data-access stakes must be DECIDED at this front gate (clarify it now) — it is NOT eligible to be carried forward as a "blocking open question" whose default `/implement` later silently flips. The signal: *would proceeding one way vs the other change the feature's security posture or who can access data?* If yes, settle it before planning completes and record the decision in state, so it becomes a binding plan contract rather than a provisional default. (This closes the leak where a "guard the endpoints" intent silently shipped as PUBLIC and was downgraded to an advisory note.)
+- **Security posture / data-access / contract decisions are RESOLVED here, not parked.** A question like *"is this endpoint guarded or public?"*, *"who may read/write this data?"*, or any contract choice with security or data-access stakes must be DECIDED at this front gate (clarify it now) — it is NOT eligible to be carried forward as a "blocking open question" whose default `/implement-plan` later silently flips. The signal: *would proceeding one way vs the other change the feature's security posture or who can access data?* If yes, settle it before planning completes and record the decision in state, so it becomes a binding plan contract rather than a provisional default. (This closes the leak where a "guard the endpoints" intent silently shipped as PUBLIC and was downgraded to an advisory note.)
   - **When the ticket is SILENT on access, the default is least-privilege: GUARDED, not public.** Public is a deliberate exception that requires positive justification — explicit ticket text (a Permissions field saying "public / anonymous"), or an unmistakable nature (a marketing page, a health check, the auth-bootstrap endpoints themselves). The Permissions field is exactly what the BA guide forces upstream; its *absence* is not a license to ship public — it means default-guarded, and flag the missing Permissions answer as a gap to confirm. (Records like the conference-CRUD ticket, where two runs flip-flopped between guarded and documented-public, are the symptom this removes: silence resolves to guarded every time.)
 
 If any such gap is found, present it at this gate alongside (or instead of) the DoR-failure prompt:
@@ -127,13 +127,13 @@ If any such gap is found, present it at this gate alongside (or instead of) the 
 
 Options:
   1. Clarify — I draft Jira/Figma comments for BA, workflow pauses
-  2. Confirm boundary — you accept the gap (I record it; verify/handoff will report the unverified ACs)
+  2. Confirm boundary — you accept the gap (I record it; verify/open-mr will report the unverified ACs)
   3. Proceed — gap is genuinely covered elsewhere; tell me where
 
 What's your call?
 ```
 
-Record the outcome in state (e.g. a `human_blocker` entry or a `scope_boundaries` note) so `/verify` and `/handoff` can report any ACs that ship unverified. Wait for the dev's reply before proceeding.
+Record the outcome in state (e.g. a `human_blocker` entry or a `scope_boundaries` note) so `/verify` and `/open-mr` can report any ACs that ship unverified. Wait for the dev's reply before proceeding.
 
 ### 5. Fetch Figma frames
 
@@ -245,14 +245,14 @@ case "$ticket_type" in
 esac
 
 # Capture the BASE branch the feature is cut from (the current branch, default main).
-# /handoff reads this to target the MR/PR at the right base.
+# /open-mr reads this to target the MR/PR at the right base.
 base_branch="${current_branch:-main}"
 
 branch="${type}/${TICKET}-${slug}"
 git checkout -b "$branch"
 ```
 
-Record `base_branch` (= the branch the feature was cut from, default `main`) in the state file (below) — `/handoff` reads it to target the MR/PR.
+Record `base_branch` (= the branch the feature was cut from, default `main`) in the state file (below) — `/open-mr` reads it to target the MR/PR.
 
 If §3's classification disagrees with Jira's `issueType` (e.g. a "Story" classified as a `bug`), the **classified type wins** for the branch prefix — `bug` → `fix/`, everything else → `feat/`.
 

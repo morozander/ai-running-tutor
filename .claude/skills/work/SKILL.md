@@ -107,7 +107,7 @@ All plan artifacts live in `.agentic/plans/<TICKET>/` (per-ticket subfolder):
 
 ### 2b. Probe host RAM once per pass — set execution mode
 
-Probe host RAM **ONCE** at the start of each `/work` pass and record the classification in state — every heavy step downstream (the verify waves, `/implement` spawns, boots/bundles) reads `state.exec_mode` instead of re-probing:
+Probe host RAM **ONCE** at the start of each `/work` pass and record the classification in state — every heavy step downstream (the verify waves, `/implement-plan` spawns, boots/bundles) reads `state.exec_mode` instead of re-probing:
 
 ```bash
 # total GB
@@ -133,10 +133,10 @@ Write `exec_mode: "constrained" | "ample"` (plus the probed total GB + free %) i
 | `starting` (succeeded) | Run `/plan` skill (explorer → planner → plan-reviewer) | `plan-review` | always pauses here for dev approval |
 | `starting` (paused for clarification) | Wait for dev's chat answer; resume per their input | stays | yes |
 | `plan-review` | Wait for dev's answer ("approve" / changes / edits-then-go) | `implementing` or re-plan | yes |
-| `implementing` | Dispatch `/implement` — loops through tasks until exhausted | `verifying` | no |
+| `implementing` | Dispatch `/implement-plan` — loops through tasks until exhausted | `verifying` | no |
 | `verifying` | Dispatch `/verify` (the verifier set defined in `verify/SKILL.md` — wave-1 in parallel, then design-parity, then the opus coordinator) | `review-ready` / `fixing` / pause | only if coordinator says ESCALATE |
-| `fixing` | Dispatch `/implement` in fix-mode with verifier routing | `verifying` (re-runs) | no |
-| `review-ready` | Dispatch `/handoff` — opens MR/PR | `done` | no |
+| `fixing` | Dispatch `/implement-plan` in fix-mode with verifier routing | `verifying` (re-runs) | no |
+| `review-ready` | Dispatch `/open-mr` — opens MR/PR | `done` | no |
 | `done` | Tell dev ticket is complete | stays | yes |
 
 **Key**: gates pause the loop and surface a question to the dev. Everything else continues automatically in the same `/work` call.
@@ -280,7 +280,7 @@ Anything else? Free-form: which states matter most, which to ignore, parts of th
 Your decision:
   1. Apply the suggested fix — coordinator's recommendation
   2. Describe a different approach inline below
-  3. Accept the risk and continue to /handoff (adds "skip-verify" label on MR)
+  3. Accept the risk and continue to /open-mr (adds "skip-verify" label on MR)
   4. Pause — let me investigate
 
 Anything else? Free-form: dev's interpretation of the finding, related context, why we should/shouldn't act on it.
@@ -305,7 +305,7 @@ when `state.iterations.verify_loops` would exceed the ceiling.
 Your decision:
   1. Raise ceiling — reply "raise ceiling <N>" to set max_verify_loops and continue
   2. Inspect & fix manually — see .agentic/plans/<TICKET>/verify/coordinator.json, then "re-verify"
-  3. Accept-risk → /handoff — open the MR with the remaining gaps documented
+  3. Accept-risk → /open-mr — open the MR with the remaining gaps documented
   4. Pause — save state, resume later
 
 Anything else? Free-form.
@@ -372,10 +372,10 @@ function work(ticket):
 1. **DoR / design clarification needed** in `/start` (missing required ticket fields, design gaps with no clear default)
 2. **Plan review** after `/plan` produces `plan.md` (phase = `plan-review`; dev approves or requests changes)
 3. **Verify escalation** when retry cap hit or critical/architectural finding (phase stays `verifying`)
-4. **MR opened** after `/handoff` succeeds (phase = `done`)
+4. **MR opened** after `/open-mr` succeeds (phase = `done`)
 5. **Iteration ceiling reached** (verify→fix loops hit `max_verify_loops` — see the iteration-ceiling gate)
 
-Anything else — phase transitions, task switches in `/implement`, verifier passes — happens silently inside the loop. The dev sees one long sequence of tool calls and a final summary.
+Anything else — phase transitions, task switches in `/implement-plan`, verifier passes — happens silently inside the loop. The dev sees one long sequence of tool calls and a final summary.
 
 #### Example — one `/work` call covers many phases
 
@@ -412,7 +412,7 @@ That's ONE `/work` call. It covered `none → starting → planning → plan-rev
 Dev reviews, then says "approve" or runs `/work`:
 
 ```
-▸ /implement dispatching (6 tasks)
+▸ /implement-plan dispatching (6 tasks)
   ▸ t1: Add stopSequence mutation (backend) ... ✓ committed e3a9b2c
   ▸ t2: Add useStopSequence hook (frontend) ... ✓ committed 7f1d4a8
   ▸ t3-t6: ... ✓ all committed
@@ -427,7 +427,7 @@ Dev reviews, then says "approve" or runs `/work`:
 
   Phase: verifying → review-ready
 
-▸ /handoff dispatching
+▸ /open-mr dispatching
   ✓ pushed feat/BEO-19-edit-follow-up-emails
   ✓ opened MR: https://gitlab.geniusee.com/.../merge_requests/42
   ✓ Jira ticket transitioned to "In Review"
@@ -463,7 +463,7 @@ On every pause, surface a clear status header:
 #### Do NOT pause for:
 
 - Phase transitions inside the happy path
-- Task switches inside `/implement` (each task auto-commits and the next one starts)
+- Task switches inside `/implement-plan` (each task auto-commits and the next one starts)
 - Verifier re-runs inside the fix loop (under cap)
 - "Progress updates" — those go to the status header, not as pause points
 
@@ -473,7 +473,7 @@ On every pause, surface a clear status header:
 
 Per `.agentic/rules/_shared/leave-no-trace.md`: /verify disposes per-pass (keyed to the coordinator decision); the driver disposes at **run boundaries**, reading `.agentic/plans/<TICKET>/verify/runtime-ledger.json`:
 
-- **phase → done** (after /handoff): tear down every remaining ledger entry via its recorded command, confirm gone, clear the ledger; list what was cleaned in the done message. An entry already dead = confirm gone + clear it, not an error.
+- **phase → done** (after /open-mr): tear down every remaining ledger entry via its recorded command, confirm gone, clear the ledger; list what was cleaned in the done message. An entry already dead = confirm gone + clear it, not an error.
 - **`/work --reset`**: sweep the ledger BEFORE deleting state — "start over" severs the run's ownership context, so any service left running would be inherited by the next run as an unowned leftover.
 - **any pause for a human** while ledger entries are alive: the pause header lists what is left running + its one-line teardown (the verify-phase gate templates above already include this; other gates rarely have live services, but check).
 
@@ -547,7 +547,7 @@ Then dispatches the sub-skill. The sub-skill produces its own detailed output.
   → /verify: qa agent reports 2 failing tests, reviewer reports 1 style issue
   → coordinator classifies: both fixable
   → state: verifying → fixing, verify_retries.test_failure = 1
-  → /implement --fix-mode applies fixes
+  → /implement-plan --fix-mode applies fixes
   → state: fixing → verifying
   → /verify re-runs
   → green this time → review-ready
@@ -566,7 +566,7 @@ Then dispatches the sub-skill. The sub-skill produces its own detailed output.
 ## Hard rules
 
 - ❌ Never edit state.json by hand from inside a skill (the driver owns it) — and the driver itself mutates ONLY via `.claude/scripts/state-update.mjs` (locked + atomic; the post-tool-use hook writes through the same path). Never read-modify-write the file whole from memory.
-- ❌ Never call a phase-specific skill (`/plan`, `/implement`, `/verify`, `/handoff`) directly from `/work` outside its proper phase
+- ❌ Never call a phase-specific skill (`/plan`, `/implement-plan`, `/verify`, `/open-mr`) directly from `/work` outside its proper phase
 - ❌ Never advance phase without the sub-skill confirming success
 - ❌ Never silently bypass a human gate
 - ❌ Never reach `done` or execute `--reset` while flow-started services from the ticket runtime ledger (`.agentic/plans/<TICKET>/verify/runtime-ledger.json`) are still running and unreported — sweep them (or list them with teardown one-liners) first

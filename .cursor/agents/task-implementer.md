@@ -12,7 +12,7 @@ model: claude-sonnet-5
 
 **Model**: Sonnet — code generation is mostly mechanical when the plan is detailed. Sonnet handles this well at ~1/5 the cost of Opus.
 
-## Inputs (from /implement skill)
+## Inputs (from /implement-plan skill)
 
 - Plan at `.agentic/plans/<TICKET>/plan.md`
 - The specific task to implement (e.g., t3) — including its context_files, files_to_modify, files_to_create, acceptance, references

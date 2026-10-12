@@ -215,7 +215,7 @@ Classify these as `fixable` if the code owns the gap, or `blocked` if it's envir
 - ❌ Never report a package `pass` you didn't actually boot; never report backend/auth verified without **containers running + a real query/auth round-trip**.
 - ❌ Never run IaC apply/destroy.
 - ❌ Never invent a recording — a missing/empty recording file on a UI-journey ticket is `blocked`/`inconclusive`, which the coordinator treats as escalate, not pass.
-- ❌ Don't fix code — report only; the coordinator routes `ai_fixable` findings to `/implement`.
+- ❌ Don't fix code — report only; the coordinator routes `ai_fixable` findings to `/implement-plan`.
 - ❌ Never start a duplicate of a service your ledger says is already up — reuse it (rebuild first for build-serving servers) or replace it via its teardown command; a backend `EADDRINUSE` crash is that signal, not a `fixable` finding.
 - ❌ Never kill/stop a process or container that is not in the ledger — it's the dev's. (`mise run cognito-up` counts as a stop: it's a destructive reset.)
 - ❌ Never capture against a port without confirming YOUR server — this pass's ledgered instance, serving the current build — is the one bound to it. Read the ACTUAL port from the boot log/ledger; never hardcode it.

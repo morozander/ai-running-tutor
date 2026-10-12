@@ -96,7 +96,7 @@ Alongside your concise summary, your return MUST include:
 
 ## Hard rules
 
-- ❌ Don't write tests yourself — that's `/implement` in fix-mode
+- ❌ Don't write tests yourself — that's `/implement-plan` in fix-mode
 - ❌ Don't approve coverage by reading code without running tests
 - ❌ Don't accept `.skip` tests as coverage
 - ❌ Don't report `pass` for a package whose suite never executed (install/config/parse error, zero tests collected) — that is `inconclusive`, not pass
